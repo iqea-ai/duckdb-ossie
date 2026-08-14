@@ -1,0 +1,10 @@
+# name: test/sql/ossie.test
+# description: the ossie extension builds and loads
+# group: [sql]
+
+require ossie
+
+query I
+SELECT count(*) FROM duckdb_extensions() WHERE extension_name = 'ossie' AND loaded;
+----
+1

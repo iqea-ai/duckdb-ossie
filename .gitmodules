@@ -1,8 +1,11 @@
+# Submodules are pinned to the commits recorded in the tree: there is deliberately no `branch`
+# entry, so `git submodule update` restores exactly these versions and `--remote` has nothing to
+# drift toward. DuckDB's parser/planner internals are not a stable API -- see docs/limitations.md.
+#   duckdb              v1.5.4          08e34c447bae34eaee3723cac61f2878b6bdf787
+#   extension-ci-tools  v1.5-variegata  b777c70d30942cca5bef62d6d4fa23a13362f398
 [submodule "duckdb"]
 	path = duckdb
 	url = https://github.com/duckdb/duckdb
-	branch = main
 [submodule "extension-ci-tools"]
 	path = extension-ci-tools
 	url = https://github.com/duckdb/extension-ci-tools
-	branch = main
