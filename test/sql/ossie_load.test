@@ -1,0 +1,28 @@
+# name: test/sql/ossie_load.test
+# description: ossie_load parses the reference TPC-DS model and refuses bad ones
+# group: [sql]
+
+require ossie
+
+# The reference model: 5 datasets, 31 fields, 4 relationships, 5 metrics.
+query TTIIII
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json');
+----
+tpcds_retail_model	0.2.0.dev0	5	31	4	5
+
+# rebind remaps the warehouse prefix onto the local catalog; counts are unaffected.
+query TTIIII
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
+----
+tpcds_retail_model	0.2.0.dev0	5	31	4	5
+
+# A malformed expression must fail at load time, naming the offending metric.
+statement error
+CALL ossie_load('test/fixtures/malformed_expression_model.json');
+----
+metric "store_productivity" has an unparseable expression
+
+statement error
+CALL ossie_load('/does/not/exist.json');
+----
+IO Error

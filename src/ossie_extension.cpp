@@ -4,13 +4,12 @@
 
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
+#include "ossie/functions.hpp"
 
 namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
-	// ossie_load, the four introspection table functions, ossie_query and ossie_compile
-	// register here as the phases come online.
-	(void)loader;
+	ossie::RegisterLoadFunction(loader);
 }
 
 void OssieExtension::Load(ExtensionLoader &loader) {

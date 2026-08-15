@@ -17,7 +17,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(src/include)
 
-set(EXTENSION_SOURCES src/ossie_extension.cpp)
+set(EXTENSION_SOURCES
+    src/ossie_extension.cpp
+    src/model/parser.cpp
+    src/functions/load.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
