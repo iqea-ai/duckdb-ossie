@@ -64,6 +64,11 @@ struct Dataset {
 	}
 };
 
+//! Derived from the endpoints' declared keys.
+enum class Cardinality : uint8_t { MANY_TO_ONE, ONE_TO_MANY, ONE_TO_ONE, MANY_TO_MANY };
+
+const char *CardinalityName(Cardinality cardinality);
+
 struct Relationship {
 	string name;
 	string from_dataset;
@@ -71,6 +76,8 @@ struct Relationship {
 	vector<string> from_columns;
 	vector<string> to_columns;
 	AIContext ai_context;
+	//! Default to the most conservative value.
+	Cardinality cardinality = Cardinality::MANY_TO_MANY;
 };
 
 struct Metric {

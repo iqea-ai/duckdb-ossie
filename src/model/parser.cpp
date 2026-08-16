@@ -1,5 +1,6 @@
 #include "ossie/parser.hpp"
 
+#include "ossie/graph.hpp"
 #include "ossie/validate.hpp"
 
 #include "duckdb/common/error_data.hpp"
@@ -392,6 +393,7 @@ Model ParseModel(const string &json_text, const RebindMap &rebind) {
 	}
 
 	ValidateModel(result);
+	ComputeCardinality(result);
 	return result;
 }
 

@@ -20,3 +20,30 @@ statement error
 CALL ossie_load('/does/not/exist.json');
 ----
 IO Error
+
+# validate_sources is off by default, so a model loads with no local tables at all.
+statement ok
+CREATE TABLE store_sales(a INT);
+
+statement ok
+CREATE TABLE date_dim(a INT);
+
+statement ok
+CREATE TABLE item(a INT);
+
+# Every unresolved source is reported at once rather than one per attempt.
+statement error
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'memory.main'}, validate_sources => true);
+----
+2 of 5 dataset sources do not exist in the catalog
+
+statement ok
+CREATE TABLE customer(a INT);
+
+statement ok
+CREATE TABLE store(a INT);
+
+query TTIIII
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'memory.main'}, validate_sources => true);
+----
+tpcds_retail_model	0.2.0.dev0	5	31	4	5

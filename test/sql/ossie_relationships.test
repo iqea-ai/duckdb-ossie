@@ -1,0 +1,38 @@
+# name: test/sql/ossie_relationships.test
+# description: relationship introspection and derived cardinality
+# group: [sql]
+
+require ossie
+
+# Introspection before a load has nothing to describe.
+statement error
+SELECT * FROM ossie_relationships();
+----
+no Ossie model is loaded
+
+statement ok
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json');
+
+# Every edge joins a dimension's primary key, so all four are many-to-one.
+# store is the interesting one: primary_key [s_store_sk] but unique_keys [[s_store_id]].
+query TTTT
+SELECT name, from_dataset, to_dataset, cardinality FROM ossie_relationships() ORDER BY name;
+----
+store_sales_to_customer	store_sales	customer	many_to_one
+store_sales_to_date	store_sales	date_dim	many_to_one
+store_sales_to_item	store_sales	item	many_to_one
+store_sales_to_store	store_sales	store	many_to_one
+
+query TT
+SELECT name, to_columns FROM ossie_relationships() WHERE name = 'store_sales_to_store';
+----
+store_sales_to_store	[s_store_sk]
+
+# Joining a non-key column is a fan-out edge on both sides.
+statement ok
+CALL ossie_load('test/fixtures/many_to_many_model.json');
+
+query TT
+SELECT name, cardinality FROM ossie_relationships() WHERE name = 'store_sales_to_store';
+----
+store_sales_to_store	many_to_many

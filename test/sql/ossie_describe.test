@@ -1,0 +1,53 @@
+# name: test/sql/ossie_describe.test
+# description: model description functions
+# group: [sql]
+
+require ossie
+
+statement error
+SELECT * FROM ossie_metrics();
+----
+no Ossie model is loaded
+
+statement ok
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json');
+
+# Phase 0 exit criterion: five metrics with synonyms populated.
+query TTT
+SELECT name, datatype, synonyms FROM ossie_metrics() ORDER BY name;
+----
+customer_lifetime_value	Decimal	[CLV, LTV, customer value, lifetime revenue]
+sales_by_brand	Decimal	[brand sales, brand performance, brand revenue]
+store_productivity	Decimal	[sales per employee, employee productivity, revenue per employee]
+total_profit	Decimal	[net profit, total earnings, profit]
+total_sales	Decimal	[total revenue, gross sales, sales amount]
+
+query I
+SELECT count(*) FROM ossie_fields();
+----
+31
+
+# A computed field is inlined at rewrite time, never emitted as dataset.field.
+query TTT
+SELECT dataset, is_computed, expression FROM ossie_fields() WHERE name = 'customer_full_name';
+----
+customer	true	c_first_name || ' ' || c_last_name
+
+# datatype is optional in the spec, so it is reported as NULL rather than invented.
+query TT
+SELECT name, datatype FROM ossie_fields() WHERE datatype IS NULL ORDER BY name;
+----
+d_month_name	NULL
+d_quarter_name	NULL
+
+# store keys on primary_key but declares a different unique_keys entry.
+query TTT
+SELECT name, primary_key, unique_keys FROM ossie_datasets() WHERE name = 'store';
+----
+store	[s_store_sk]	[[s_store_id]]
+
+# Both the raw and rebound source are exposed; unrebound tpcds.public.* has no local table.
+query TTT
+SELECT name, source, resolved FROM ossie_datasets() WHERE name = 'store';
+----
+store	tpcds.public.store	false

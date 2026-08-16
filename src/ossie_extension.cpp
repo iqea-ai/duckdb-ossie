@@ -10,6 +10,7 @@ namespace duckdb {
 
 static void LoadInternal(ExtensionLoader &loader) {
 	ossie::RegisterLoadFunction(loader);
+	ossie::RegisterDescribeFunctions(loader);
 }
 
 void OssieExtension::Load(ExtensionLoader &loader) {

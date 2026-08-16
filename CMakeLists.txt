@@ -21,7 +21,10 @@ set(EXTENSION_SOURCES
     src/ossie_extension.cpp
     src/model/parser.cpp
     src/model/validate.cpp
-    src/functions/load.cpp)
+    src/model/graph.cpp
+    src/model/catalog.cpp
+    src/functions/load.cpp
+    src/functions/describe.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})

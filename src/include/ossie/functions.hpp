@@ -8,5 +8,8 @@ namespace ossie {
 //! Registers ossie_load(path, rebind => MAP).
 void RegisterLoadFunction(ExtensionLoader &loader);
 
+//! Registers the model description table functions.
+void RegisterDescribeFunctions(ExtensionLoader &loader);
+
 } // namespace ossie
 } // namespace duckdb

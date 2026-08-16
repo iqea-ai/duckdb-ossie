@@ -1,3 +1,4 @@
+#include "ossie/catalog.hpp"
 #include "ossie/functions.hpp"
 
 #include "duckdb/common/exception.hpp"
@@ -16,6 +17,8 @@ namespace {
 struct LoadBindData : public TableFunctionData {
 	string path;
 	RebindMap rebind;
+	//! Off by default to allow ossie_compile to work with engines where the tables are not local.
+	bool validate_sources = false;
 };
 
 struct LoadGlobalState : public GlobalTableFunctionState {
@@ -48,6 +51,8 @@ unique_ptr<FunctionData> LoadBind(ClientContext &context, TableFunctionBindInput
 	for (auto &entry : input.named_parameters) {
 		if (StringUtil::CIEquals(entry.first, "rebind")) {
 			result->rebind = ParseRebind(entry.second);
+		} else if (StringUtil::CIEquals(entry.first, "validate_sources")) {
+			result->validate_sources = entry.second.GetValue<bool>();
 		}
 	}
 
@@ -70,6 +75,21 @@ void LoadFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk 
 	auto &bind_data = data_p.bind_data->Cast<LoadBindData>();
 
 	auto model = make_shared_ptr<Model>(LoadModel(context, bind_data.path, bind_data.rebind));
+
+	if (bind_data.validate_sources) {
+		// Report every unresolved source at once, so fixing a rebind takes one round trip.
+		vector<string> unresolved;
+		for (auto &dataset : model->datasets) {
+			if (!SourceResolves(context, dataset.source_bound)) {
+				unresolved.push_back(StringUtil::Format("\"%s\" (%s)", dataset.name, dataset.source_bound));
+			}
+		}
+		if (!unresolved.empty()) {
+			throw InvalidInputException("ossie_load: %s of %s dataset sources do not exist in the catalog: %s",
+			                            to_string(unresolved.size()), to_string(model->datasets.size()),
+			                            StringUtil::Join(unresolved, ", "));
+		}
+	}
 
 	idx_t field_count = 0;
 	for (auto &dataset : model->datasets) {
@@ -107,6 +127,7 @@ shared_ptr<Model> OssieState::GetModel() {
 void RegisterLoadFunction(ExtensionLoader &loader) {
 	TableFunction ossie_load("ossie_load", {LogicalType::VARCHAR}, LoadFunction, LoadBind, LoadInitGlobal);
 	ossie_load.named_parameters["rebind"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
+	ossie_load.named_parameters["validate_sources"] = LogicalType::BOOLEAN;
 	loader.RegisterFunction(ossie_load);
 }
 
