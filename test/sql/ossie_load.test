@@ -16,12 +16,6 @@ CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.
 ----
 tpcds_retail_model	0.2.0.dev0	5	31	4	5
 
-# A malformed expression must fail at load time, naming the offending metric.
-statement error
-CALL ossie_load('test/fixtures/malformed_expression_model.json');
-----
-metric "store_productivity" has an unparseable expression
-
 statement error
 CALL ossie_load('/does/not/exist.json');
 ----

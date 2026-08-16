@@ -20,6 +20,7 @@ include_directories(src/include)
 set(EXTENSION_SOURCES
     src/ossie_extension.cpp
     src/model/parser.cpp
+    src/model/validate.cpp
     src/functions/load.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})

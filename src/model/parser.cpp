@@ -1,5 +1,7 @@
 #include "ossie/parser.hpp"
 
+#include "ossie/validate.hpp"
+
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_system.hpp"
@@ -389,6 +391,7 @@ Model ParseModel(const string &json_text, const RebindMap &rebind) {
 		}
 	}
 
+	ValidateModel(result);
 	return result;
 }
 

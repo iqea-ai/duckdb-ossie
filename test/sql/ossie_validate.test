@@ -1,0 +1,26 @@
+# name: test/sql/ossie_validate.test
+# description: structural validation refusals, checked by message
+# group: [sql]
+
+require ossie
+
+statement error
+CALL ossie_load('test/fixtures/invalid/malformed_expression.json');
+----
+metric "store_productivity" has an unparseable expression
+
+statement error
+CALL ossie_load('test/fixtures/invalid/dangling_relationship.json');
+----
+relationship "store_sales_to_date" has 'to' dataset "date_dimension", which the model does not declare
+
+statement error
+CALL ossie_load('test/fixtures/invalid/undeclared_column.json');
+----
+metric "total_sales" references column "ss_bogus", which dataset "store_sales" does not declare as a field
+
+# An unqualified column in a metric leaves its grain ambiguous, so it is refused rather than guessed.
+statement error
+CALL ossie_load('test/fixtures/invalid/unqualified_metric.json');
+----
+a metric must qualify every column as dataset.field
