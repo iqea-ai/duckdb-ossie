@@ -67,14 +67,62 @@ SELECT ossie_compile(['store_productivity'], ['store.s_state'], []);
 aggregate over 2 datasets
 
 statement error
-SELECT ossie_compile(['total_sales'], [], ['date_dim.d_year = 2001']);
-----
-filters are not supported yet
-
-statement error
 SELECT ossie_compile([], [], []);
 ----
 at least one metric is required
+
+# A filter pulls in the join it needs, even when no dimension uses that dataset.
+query T
+SELECT ossie_compile(['total_sales'], ['item.i_brand'], ['date_dim.d_year = 2001']);
+----
+SELECT item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.date_dim AS date_dim ON ((store_sales.ss_sold_date_sk = date_dim.d_date_sk)) INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) WHERE (date_dim.d_year = 2001) GROUP BY item.i_brand
+
+# A filter naming a metric is an aggregate, so it becomes HAVING rather than WHERE.
+query T
+SELECT ossie_compile(['total_sales'], ['item.i_brand'], ['total_sales > 1000']);
+----
+SELECT item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) GROUP BY item.i_brand HAVING (sum(store_sales.ss_ext_sales_price) > 1000)
+
+# Operators are always permitted: LIKE, IN and arithmetic all desugar to operator functions.
+query T
+SELECT ossie_compile(['total_sales'], [], ['item.i_brand LIKE ''A%''']);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) WHERE (item.i_brand ~~ 'A%')
+
+query T
+SELECT ossie_compile(['total_sales'], [], ['store.s_state IN (''CA'', ''NY'')']);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) WHERE (store.s_state IN ('CA', 'NY'))
+
+# Named function calls are refused unless the model was loaded permitting them.
+statement error
+SELECT ossie_compile(['total_sales'], [], ['upper(item.i_brand) = ''ACME''']);
+----
+calls function "upper"
+
+statement error
+SELECT ossie_compile(['total_sales'], [], ['EXISTS (SELECT 1 FROM secret)']);
+----
+contains a subquery
+
+statement error
+SELECT ossie_compile(['total_sales'], [], ['d_year = 2001']);
+----
+neither a metric nor a dataset.field name
+
+statement ok
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'tpcds.main'}, allow_filter_functions => true);
+
+query T
+SELECT ossie_compile(['total_sales'], [], ['upper(item.i_brand) = ''ACME''']);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) WHERE (upper(item.i_brand) = 'ACME')
+
+# The flag permits function calls, never reaching tables outside the model.
+statement error
+SELECT ossie_compile(['total_sales'], [], ['EXISTS (SELECT 1 FROM secret)']);
+----
+contains a subquery
 
 # Two routes to the same dataset are refused rather than picked.
 statement ok

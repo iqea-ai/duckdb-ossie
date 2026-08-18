@@ -1,10 +1,12 @@
 #include "ossie/compile.hpp"
 
+#include "duckdb/common/error_data.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/conjunction_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
@@ -131,6 +133,136 @@ Dimension ResolveDimension(const Model &model, const string &request) {
 	return result;
 }
 
+//! Named aggregates recognised in a filter, which routes the predicate to HAVING. Not exhaustive:
+//! anything missed lands in WHERE and DuckDB rejects it with its own message.
+bool IsAggregateName(const string &name) {
+	static const case_insensitive_set_t AGGREGATES {
+	    "sum",     "count",    "avg",        "min",      "max",        "stddev",  "median",
+	    "mode",    "variance", "string_agg", "list",     "first",      "last",    "bool_and",
+	    "bool_or", "arg_max",  "arg_min",    "quantile", "count_star", "product", "histogram"};
+	return AGGREGATES.find(name) != AGGREGATES.end();
+}
+
+//! Filters come from the caller, so they are allowlisted: operators always, named calls on request,
+//! subqueries never.
+void CheckFilterNode(const ParsedExpression &expr, const string &request, const CompileOptions &options) {
+	switch (expr.GetExpressionClass()) {
+	case ExpressionClass::COLUMN_REF:
+	case ExpressionClass::CONSTANT:
+	case ExpressionClass::COMPARISON:
+	case ExpressionClass::CONJUNCTION:
+	case ExpressionClass::OPERATOR:
+	case ExpressionClass::BETWEEN:
+	case ExpressionClass::CASE:
+	case ExpressionClass::CAST:
+		return;
+	case ExpressionClass::FUNCTION: {
+		auto &function = expr.Cast<FunctionExpression>();
+		// Arithmetic, || and LIKE all arrive here with is_operator set.
+		if (function.is_operator || IsAggregateName(function.function_name) || options.allow_filter_functions) {
+			return;
+		}
+		throw InvalidInputException("ossie_compile: filter \"%s\" calls function \"%s\". Load the model with "
+		                            "allow_filter_functions => true to permit function calls in filters",
+		                            request, function.function_name);
+	}
+	case ExpressionClass::SUBQUERY:
+		throw InvalidInputException("ossie_compile: filter \"%s\" contains a subquery, which could read tables the "
+		                            "model does not declare",
+		                            request);
+	default:
+		throw InvalidInputException("ossie_compile: filter \"%s\" uses an expression that is not allowed in a filter",
+		                            request);
+	}
+}
+
+struct Filter {
+	unique_ptr<ParsedExpression> expr;
+	//! Aggregates cannot appear in WHERE, so such a predicate goes to HAVING whole rather than
+	//! being split -- HAVING may also reference grouped columns, so the halves stay valid together.
+	bool is_aggregate = false;
+};
+
+//! Resolves the names inside a filter: `dataset.field` inlines to the field's expression, and a
+//! bare metric name inlines to the metric's, which makes the predicate an aggregate.
+void ResolveFilterNames(const Model &model, unique_ptr<ParsedExpression> &expr, const string &request,
+                        bool &is_aggregate) {
+	if (expr->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+		auto &colref = expr->Cast<ColumnRefExpression>();
+		if (colref.column_names.size() == 1) {
+			auto metric = model.FindMetric(colref.column_names[0]);
+			if (!metric) {
+				throw InvalidInputException(
+				    "ossie_compile: filter \"%s\" references \"%s\", which is neither a "
+				    "metric nor a dataset.field name.%s",
+				    request, colref.column_names[0],
+				    StringUtil::CandidatesErrorMessage(MetricNames(model), colref.column_names[0], "Did you mean"));
+			}
+			auto replacement = metric->expression.tree->Copy();
+			InlineFields(model, replacement);
+			expr = std::move(replacement);
+			is_aggregate = true;
+			return;
+		}
+		if (colref.column_names.size() != 2) {
+			throw InvalidInputException("ossie_compile: filter \"%s\" references \"%s\"; columns must be qualified "
+			                            "as dataset.field",
+			                            request, StringUtil::Join(colref.column_names, "."));
+		}
+		auto dataset = model.FindDataset(colref.column_names[0]);
+		if (!dataset) {
+			throw InvalidInputException("ossie_compile: filter \"%s\" references dataset \"%s\", which the model does "
+			                            "not declare",
+			                            request, colref.column_names[0]);
+		}
+		if (!dataset->FindField(colref.column_names[1])) {
+			throw InvalidInputException(
+			    "ossie_compile: filter \"%s\" references \"%s.%s\", which the model does not declare.%s", request,
+			    colref.column_names[0], colref.column_names[1],
+			    StringUtil::CandidatesErrorMessage(
+			        DimensionNames(model), colref.column_names[0] + "." + colref.column_names[1], "Did you mean"));
+		}
+		auto replacement = dataset->FindField(colref.column_names[1])->expression.tree->Copy();
+		QualifyColumns(replacement, AliasFor(*dataset));
+		expr = std::move(replacement);
+		return;
+	}
+
+	if (expr->GetExpressionClass() == ExpressionClass::FUNCTION &&
+	    IsAggregateName(expr->Cast<FunctionExpression>().function_name)) {
+		is_aggregate = true;
+	}
+	ParsedExpressionIterator::EnumerateChildren(
+	    *expr, [&](unique_ptr<ParsedExpression> &child) { ResolveFilterNames(model, child, request, is_aggregate); });
+}
+
+void CheckFilterTree(const ParsedExpression &expr, const string &request, const CompileOptions &options) {
+	CheckFilterNode(expr, request, options);
+	ParsedExpressionIterator::EnumerateChildren(
+	    expr, [&](const ParsedExpression &child) { CheckFilterTree(child, request, options); });
+}
+
+Filter ResolveFilter(const Model &model, const string &request, const CompileOptions &options) {
+	vector<unique_ptr<ParsedExpression>> parsed;
+	try {
+		parsed = Parser::ParseExpressionList(request);
+	} catch (const ParserException &ex) {
+		throw InvalidInputException("ossie_compile: filter \"%s\" does not parse: %s", request,
+		                            ErrorData(ex).RawMessage());
+	}
+	if (parsed.size() != 1) {
+		throw InvalidInputException("ossie_compile: filter \"%s\" must be a single predicate", request);
+	}
+
+	// Policy is checked before names are resolved, so the message names what the caller wrote.
+	CheckFilterTree(*parsed[0], request, options);
+
+	Filter result;
+	result.expr = std::move(parsed[0]);
+	ResolveFilterNames(model, result.expr, request, result.is_aggregate);
+	return result;
+}
+
 struct PlannedJoin {
 	const Relationship *relationship;
 	const Dataset *dataset;
@@ -218,12 +350,9 @@ unique_ptr<ParsedExpression> JoinCondition(const Relationship &relationship) {
 } // namespace
 
 string CompileToSQL(const Model &model, const vector<string> &metrics, const vector<string> &dimensions,
-                    const vector<string> &filters) {
+                    const vector<string> &filters, const CompileOptions &options) {
 	if (metrics.empty()) {
 		throw InvalidInputException("ossie_compile: at least one metric is required");
-	}
-	if (!filters.empty()) {
-		throw InvalidInputException("ossie_compile: filters are not supported yet");
 	}
 
 	auto select = make_uniq<SelectNode>();
@@ -276,6 +405,26 @@ string CompileToSQL(const Model &model, const vector<string> &metrics, const vec
 
 	for (auto &expr : metric_expressions) {
 		select->select_list.push_back(std::move(expr));
+	}
+
+	// Filters may reference datasets nothing else does, which pulls in a join.
+	for (auto &request : filters) {
+		auto filter = ResolveFilter(model, request, options);
+		case_insensitive_set_t referenced;
+		CollectDatasets(*filter.expr, referenced);
+		for (auto &name : referenced) {
+			if (!StringUtil::CIEquals(name, root.name)) {
+				required.insert(name);
+			}
+		}
+
+		auto &target = filter.is_aggregate ? select->having : select->where_clause;
+		if (!target) {
+			target = std::move(filter.expr);
+		} else {
+			target = make_uniq<ConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(target),
+			                                          std::move(filter.expr));
+		}
 	}
 
 	unique_ptr<TableRef> from = BindTable(root);

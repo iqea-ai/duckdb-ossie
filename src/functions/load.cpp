@@ -19,6 +19,8 @@ struct LoadBindData : public TableFunctionData {
 	RebindMap rebind;
 	//! Off by default to allow ossie_compile to work with engines where the tables are not local.
 	bool validate_sources = false;
+	//! Set at load so a caller supplying filters cannot widen its own policy.
+	bool allow_filter_functions = false;
 };
 
 struct LoadGlobalState : public GlobalTableFunctionState {
@@ -53,6 +55,8 @@ unique_ptr<FunctionData> LoadBind(ClientContext &context, TableFunctionBindInput
 			result->rebind = ParseRebind(entry.second);
 		} else if (StringUtil::CIEquals(entry.first, "validate_sources")) {
 			result->validate_sources = entry.second.GetValue<bool>();
+		} else if (StringUtil::CIEquals(entry.first, "allow_filter_functions")) {
+			result->allow_filter_functions = entry.second.GetValue<bool>();
 		}
 	}
 
@@ -104,7 +108,7 @@ void LoadFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk 
 	output.SetValue(4, 0, Value::BIGINT(static_cast<int64_t>(model->relationships.size())));
 	output.SetValue(5, 0, Value::BIGINT(static_cast<int64_t>(model->metrics.size())));
 
-	OssieState::Get(context).SetModel(std::move(model));
+	OssieState::Get(context).SetModel(std::move(model), bind_data.allow_filter_functions);
 	global_state.done = true;
 }
 
@@ -114,9 +118,15 @@ OssieState &OssieState::Get(ClientContext &context) {
 	return *context.registered_state->GetOrCreate<OssieState>(STATE_KEY);
 }
 
-void OssieState::SetModel(shared_ptr<Model> new_model) {
+void OssieState::SetModel(shared_ptr<Model> new_model, bool allow_filter_functions_p) {
 	lock_guard<mutex> guard(lock);
 	model = std::move(new_model);
+	allow_filter_functions = allow_filter_functions_p;
+}
+
+bool OssieState::AllowFilterFunctions() {
+	lock_guard<mutex> guard(lock);
+	return allow_filter_functions;
 }
 
 shared_ptr<Model> OssieState::GetModel() {
@@ -128,6 +138,7 @@ void RegisterLoadFunction(ExtensionLoader &loader) {
 	TableFunction ossie_load("ossie_load", {LogicalType::VARCHAR}, LoadFunction, LoadBind, LoadInitGlobal);
 	ossie_load.named_parameters["rebind"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 	ossie_load.named_parameters["validate_sources"] = LogicalType::BOOLEAN;
+	ossie_load.named_parameters["allow_filter_functions"] = LogicalType::BOOLEAN;
 	loader.RegisterFunction(ossie_load);
 }
 

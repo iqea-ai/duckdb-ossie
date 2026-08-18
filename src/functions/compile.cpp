@@ -27,7 +27,8 @@ vector<string> ToStringList(const Value &value) {
 
 void CompileFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &context = state.GetContext();
-	auto model = OssieState::Get(context).GetModel();
+	auto &ossie_state = OssieState::Get(context);
+	auto model = ossie_state.GetModel();
 	if (!model) {
 		throw InvalidInputException("ossie_compile: no Ossie model is loaded -- call ossie_load('model.json') first");
 	}
@@ -36,7 +37,9 @@ void CompileFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 		auto metrics = ToStringList(args.data[0].GetValue(row));
 		auto dimensions = ToStringList(args.data[1].GetValue(row));
 		auto filters = ToStringList(args.data[2].GetValue(row));
-		auto sql = CompileToSQL(*model, metrics, dimensions, filters);
+		CompileOptions options;
+		options.allow_filter_functions = ossie_state.AllowFilterFunctions();
+		auto sql = CompileToSQL(*model, metrics, dimensions, filters, options);
 		result.SetValue(row, Value(sql));
 	}
 }
