@@ -283,8 +283,12 @@ Real per-request planning, easy case only.
 
 - Stages 1, 2, 4, 5 of the compiler
 - Single fact table, star topology
-- Cardinality flags computed at load time; **refuse** any query where a metric
-  aggregates across a fan-out edge, or where more than one fact table is required
+- Cardinality flags computed at load time; **refuse** any query where a single aggregate's
+  arguments span datasets, or where more than one fact table is required
+- A metric *may* reference a second dataset as a scalar — `item.i_category` inside a `CASE`,
+  say — provided that dataset is reached only across many-to-one edges. That is an ordinary
+  join with no fan-out, and it needs none of phase 3c's machinery. Do not lump it in with
+  genuinely multi-grain metrics and defer it
 - `ossie_compile` and `ossie_query`
 - MCP publication wired up at the end of this phase
 
@@ -320,7 +324,9 @@ differential tests confirm result sets match the hand-written originals row for 
 
 Turn 3b's refusals into answers.
 
-- Determine each metric's natural grain from its referenced datasets
+- Determine each *aggregate's* grain from the datasets its own arguments reference. Grain is
+  a property of each aggregate node, not of the metric as a whole: a metric may reference
+  three datasets and still contain a single aggregate at a single grain
 - When grains differ, emit one CTE per grain aggregating at that grain, then join the
   CTEs on shared dimensions
 - Multiple fact tables fall out of the same machinery — they are metrics that cannot
@@ -330,8 +336,13 @@ Do **not** implement symmetric aggregates (the `SUM(DISTINCT hash(pk) * 2^n + va
 trick). It is clever and one-pass, but brittle with floats and hash collisions. The CTE
 approach is correct and debuggable.
 
-**Exit:** `store_productivity` returns a correct number. A query mixing `store_sales`
-and `web_sales` metrics grouped by a shared dimension works.
+**Exit:** `store_productivity` returns a correct number when grouped by a dimension every
+grain can reach, such as `store.s_state`. Grouping it by `item.i_brand` stays refused, and
+correctly so: the per-store CTE reaches `item` only back through `store_sales`, so there is
+no shared dimension to join the CTEs on. Multi-grain support means requests with a shared
+groupable dimension work — not that every multi-grain request does. Record that residual
+refusal in `docs/limitations.md`. A query mixing `store_sales` and `web_sales` metrics
+grouped by a shared dimension works.
 
 ### Phase 5 — Hardening and release
 

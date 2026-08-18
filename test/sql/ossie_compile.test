@@ -22,23 +22,65 @@ SELECT ossie_compile(['total_sales', 'total_profit'], [], []);
 ----
 SELECT sum(store_sales.ss_ext_sales_price) AS total_sales, sum(store_sales.ss_net_profit) AS total_profit FROM tpcds.main.store_sales AS store_sales
 
+# A dimension pulls in its dataset over the declared relationship and adds a GROUP BY.
+query T
+SELECT ossie_compile(['total_sales'], ['item.i_brand'], []);
+----
+SELECT item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) GROUP BY item.i_brand
+
+query T
+SELECT ossie_compile(['total_sales'], ['item.i_brand', 'store.s_state'], []);
+----
+SELECT item.i_brand AS "item.i_brand", store.s_state AS "store.s_state", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) GROUP BY item.i_brand, store.s_state
+
+# A computed dimension is inlined into both the projection and the GROUP BY, since
+# customer_full_name does not exist as a column on the table.
+query T
+SELECT ossie_compile(['total_sales'], ['customer.customer_full_name'], []);
+----
+SELECT ((customer.c_first_name || ' ') || customer.c_last_name) AS "customer.customer_full_name", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.customer AS customer ON ((store_sales.ss_customer_sk = customer.c_customer_sk)) GROUP BY ((customer.c_first_name || ' ') || customer.c_last_name)
+
 statement error
 SELECT ossie_compile(['total_sale'], [], []);
 ----
 Did you mean: "total_sales"
 
-# Metrics reaching a second dataset need a join.
 statement error
-SELECT ossie_compile(['store_productivity'], [], []);
+SELECT ossie_compile(['total_sales'], ['item.i_brnad'], []);
 ----
-spans 2 datasets
+Did you mean: "item.i_brand"
 
 statement error
-SELECT ossie_compile(['total_sales'], ['item.i_brand'], []);
+SELECT ossie_compile(['total_sales'], ['i_brand'], []);
 ----
-dimensions and filters are not supported yet
+must be qualified as dataset.field
+
+statement error
+SELECT ossie_compile(['total_sales'], ['nosuch.field'], []);
+----
+names dataset "nosuch", which the model does not declare
+
+# Aggregating over two datasets needs each aggregate computed at its own grain.
+statement error
+SELECT ossie_compile(['store_productivity'], ['store.s_state'], []);
+----
+aggregate over 2 datasets
+
+statement error
+SELECT ossie_compile(['total_sales'], [], ['date_dim.d_year = 2001']);
+----
+filters are not supported yet
 
 statement error
 SELECT ossie_compile([], [], []);
 ----
 at least one metric is required
+
+# Two routes to the same dataset are refused rather than picked.
+statement ok
+CALL ossie_load('test/fixtures/ambiguous_path_model.json');
+
+statement error
+SELECT ossie_compile(['total_sales'], ['item.i_brand', 'store.s_state'], []);
+----
+more than one join path connects
