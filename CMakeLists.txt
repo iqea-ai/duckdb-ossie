@@ -23,7 +23,9 @@ set(EXTENSION_SOURCES
     src/model/validate.cpp
     src/model/graph.cpp
     src/model/catalog.cpp
+    src/compile/compile.cpp
     src/functions/load.cpp
+    src/functions/compile.cpp
     src/functions/describe.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})

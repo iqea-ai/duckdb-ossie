@@ -1,0 +1,44 @@
+# name: test/sql/ossie_compile.test
+# description: golden SQL for compiled semantic requests
+# group: [sql]
+
+require ossie
+
+statement error
+SELECT ossie_compile(['total_sales'], [], []);
+----
+no Ossie model is loaded
+
+statement ok
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
+
+query T
+SELECT ossie_compile(['total_sales'], [], []);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales
+
+query T
+SELECT ossie_compile(['total_sales', 'total_profit'], [], []);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales, sum(store_sales.ss_net_profit) AS total_profit FROM tpcds.main.store_sales AS store_sales
+
+statement error
+SELECT ossie_compile(['total_sale'], [], []);
+----
+Did you mean: "total_sales"
+
+# Metrics reaching a second dataset need a join.
+statement error
+SELECT ossie_compile(['store_productivity'], [], []);
+----
+spans 2 datasets
+
+statement error
+SELECT ossie_compile(['total_sales'], ['item.i_brand'], []);
+----
+dimensions and filters are not supported yet
+
+statement error
+SELECT ossie_compile([], [], []);
+----
+at least one metric is required

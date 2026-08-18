@@ -9,11 +9,12 @@
 namespace duckdb {
 namespace ossie {
 
-bool SourceResolves(ClientContext &context, const string &source) {
+void SplitSource(const string &source, string &catalog, string &schema, string &name) {
+	catalog = INVALID_CATALOG;
+	schema = INVALID_SCHEMA;
+	name = string();
+
 	auto parts = QualifiedName::ParseComponents(source);
-	string catalog = INVALID_CATALOG;
-	string schema = INVALID_SCHEMA;
-	string name;
 	switch (parts.size()) {
 	case 3:
 		catalog = parts[0];
@@ -28,6 +29,14 @@ bool SourceResolves(ClientContext &context, const string &source) {
 		name = parts[0];
 		break;
 	default:
+		break;
+	}
+}
+
+bool SourceResolves(ClientContext &context, const string &source) {
+	string catalog, schema, name;
+	SplitSource(source, catalog, schema, name);
+	if (name.empty()) {
 		return false;
 	}
 
