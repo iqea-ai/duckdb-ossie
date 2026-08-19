@@ -133,6 +133,50 @@ Dimension ResolveDimension(const Model &model, const string &request) {
 	return result;
 }
 
+//! Whether joining across this edge repeats rows of the side we started from. Travelling toward the
+//! unique side matches at most one row; travelling away from it matches many.
+bool FansOut(const Relationship &relationship, bool moving_to_target) {
+	switch (relationship.cardinality) {
+	case Cardinality::ONE_TO_ONE:
+		return false;
+	case Cardinality::MANY_TO_ONE:
+		return !moving_to_target;
+	case Cardinality::ONE_TO_MANY:
+		return moving_to_target;
+	default:
+		return true;
+	}
+}
+
+//! Datasets joinable to `root` by cardinality-preserving edges, root included. The property
+//! composes: if no hop repeats rows, neither does the whole path.
+case_insensitive_set_t SafelyReachable(const Model &model, const string &root) {
+	case_insensitive_set_t visited {root};
+	vector<string> queue {root};
+	for (idx_t head = 0; head < queue.size(); head++) {
+		for (auto &relationship : model.relationships) {
+			string other;
+			bool moving_to_target;
+			if (StringUtil::CIEquals(relationship.from_dataset, queue[head])) {
+				other = relationship.to_dataset;
+				moving_to_target = true;
+			} else if (StringUtil::CIEquals(relationship.to_dataset, queue[head])) {
+				other = relationship.from_dataset;
+				moving_to_target = false;
+			} else {
+				continue;
+			}
+			if (FansOut(relationship, moving_to_target)) {
+				continue;
+			}
+			if (visited.insert(other).second) {
+				queue.push_back(other);
+			}
+		}
+	}
+	return visited;
+}
+
 //! Named aggregates recognised in a filter, which routes the predicate to HAVING. Not exhaustive:
 //! anything missed lands in WHERE and DuckDB rejects it with its own message.
 bool IsAggregateName(const string &name) {
@@ -174,6 +218,51 @@ void CheckFilterNode(const ParsedExpression &expr, const string &request, const 
 		throw InvalidInputException("ossie_compile: filter \"%s\" uses an expression that is not allowed in a filter",
 		                            request);
 	}
+}
+
+//! An aggregate's grain is the dataset that functionally determines the others it touches: their
+//! values are replicated onto its rows, so each of its rows is still counted exactly once.
+string AggregateGrain(const Model &model, const case_insensitive_set_t &datasets, const string &metric_name) {
+	vector<string> candidates;
+	for (auto &candidate : datasets) {
+		auto reachable = SafelyReachable(model, candidate);
+		bool covers_all = true;
+		for (auto &other : datasets) {
+			if (reachable.find(other) == reachable.end()) {
+				covers_all = false;
+				break;
+			}
+		}
+		if (covers_all) {
+			candidates.push_back(candidate);
+		}
+	}
+	if (candidates.size() != 1) {
+		vector<string> names(datasets.begin(), datasets.end());
+		throw InvalidInputException("ossie_compile: an aggregate in metric \"%s\" spans datasets %s, and none of them "
+		                            "is the grain the others hang off, so there is no single set of rows to aggregate",
+		                            metric_name, StringUtil::Join(names, ", "));
+	}
+	return candidates[0];
+}
+
+//! Collects the grain of every aggregate in a metric. An aggregate with no column reference, such
+//! as COUNT(*), names no dataset and is recorded separately.
+void CollectGrains(const Model &model, const ParsedExpression &expr, const string &metric_name,
+                   case_insensitive_set_t &grains, bool &has_grainless) {
+	if (expr.GetExpressionClass() == ExpressionClass::FUNCTION &&
+	    IsAggregateName(expr.Cast<FunctionExpression>().function_name)) {
+		case_insensitive_set_t datasets;
+		CollectDatasets(expr, datasets);
+		if (datasets.empty()) {
+			has_grainless = true;
+		} else {
+			grains.insert(AggregateGrain(model, datasets, metric_name));
+		}
+		return;
+	}
+	ParsedExpressionIterator::EnumerateChildren(
+	    expr, [&](const ParsedExpression &child) { CollectGrains(model, child, metric_name, grains, has_grainless); });
 }
 
 struct Filter {
@@ -356,7 +445,10 @@ string CompileToSQL(const Model &model, const vector<string> &metrics, const vec
 	}
 
 	auto select = make_uniq<SelectNode>();
+	case_insensitive_set_t grains;
 	case_insensitive_set_t metric_datasets;
+	bool has_grainless = false;
+	string grainless_metric;
 	vector<unique_ptr<ParsedExpression>> metric_expressions;
 
 	for (auto &metric_name : metrics) {
@@ -366,7 +458,13 @@ string CompileToSQL(const Model &model, const vector<string> &metrics, const vec
 			    "ossie_compile: model \"%s\" has no metric named \"%s\".%s", model.name, metric_name,
 			    StringUtil::CandidatesErrorMessage(MetricNames(model), metric_name, "Did you mean"));
 		}
+		bool metric_grainless = false;
+		CollectGrains(model, *metric->expression.tree, metric->name, grains, metric_grainless);
 		CollectDatasets(*metric->expression.tree, metric_datasets);
+		if (metric_grainless) {
+			has_grainless = true;
+			grainless_metric = metric->name;
+		}
 
 		auto expr = metric->expression.tree->Copy();
 		InlineFields(model, expr);
@@ -374,17 +472,34 @@ string CompileToSQL(const Model &model, const vector<string> &metrics, const vec
 		metric_expressions.push_back(std::move(expr));
 	}
 
-	// Metrics must share one dataset: aggregating across a join can multiply rows into the result,
-	// which we don't handle yet
-	if (metric_datasets.size() != 1) {
-		throw InvalidInputException("ossie_compile: these metrics aggregate over %s datasets, which needs each "
-		                            "aggregate computed at its own grain",
-		                            to_string(metric_datasets.size()));
+	// One query has one set of rows to group, so every aggregate must sit at the same grain.
+	if (grains.size() > 1) {
+		vector<string> names(grains.begin(), grains.end());
+		throw InvalidInputException("ossie_compile: these metrics aggregate at %s different grains (%s). Computing "
+		                            "them together needs one aggregate per grain, which is not supported yet",
+		                            to_string(grains.size()), StringUtil::Join(names, ", "));
 	}
-	auto &root = *model.FindDataset(*metric_datasets.begin());
+	if (grains.empty()) {
+		if (has_grainless) {
+			throw InvalidInputException("ossie_compile: metric \"%s\" has an aggregate with no column reference, so "
+			                            "there is no dataset to aggregate over. Qualify it, for example "
+			                            "COUNT(store_sales.ss_item_sk) rather than COUNT(*)",
+			                            grainless_metric);
+		}
+		throw InvalidInputException("ossie_compile: no requested metric contains an aggregate, so the query has no "
+		                            "grain to group by");
+	}
+	// A grainless aggregate is safe once one grain exists: fan-out is refused below, so the joined
+	// row count equals the root row count.
+	auto &root = *model.FindDataset(*grains.begin());
 
-	// Dimensions are projected and grouped; they may pull in datasets the metrics do not touch.
+	// A metric may reference a second dataset as a scalar, which still has to be joined.
 	case_insensitive_set_t required;
+	for (auto &name : metric_datasets) {
+		if (!StringUtil::CIEquals(name, root.name)) {
+			required.insert(name);
+		}
+	}
 	for (auto &request : dimensions) {
 		auto dimension = ResolveDimension(model, request);
 		if (!StringUtil::CIEquals(dimension.dataset->name, root.name)) {
@@ -427,8 +542,19 @@ string CompileToSQL(const Model &model, const vector<string> &metrics, const vec
 		}
 	}
 
+	auto planned_joins = PlanJoins(model, root, required);
+	for (auto &planned : planned_joins) {
+		bool moving_to_target = StringUtil::CIEquals(planned.relationship->to_dataset, planned.dataset->name);
+		if (FansOut(*planned.relationship, moving_to_target)) {
+			throw InvalidInputException("ossie_compile: joining \"%s\" repeats each \"%s\" row once per match, which "
+			                            "would inflate every aggregate. Relationship \"%s\" is %s",
+			                            planned.dataset->name, root.name, planned.relationship->name,
+			                            CardinalityName(planned.relationship->cardinality));
+		}
+	}
+
 	unique_ptr<TableRef> from = BindTable(root);
-	for (auto &planned : PlanJoins(model, root, required)) {
+	for (auto &planned : planned_joins) {
 		auto join = make_uniq<JoinRef>(JoinRefType::REGULAR);
 		// Ossie does not declare a join type. INNER matches hand-written SQL, but drops fact rows
 		// where the foreign key is NULL; an override belongs here when one is needed.

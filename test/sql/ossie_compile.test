@@ -60,11 +60,11 @@ SELECT ossie_compile(['total_sales'], ['nosuch.field'], []);
 ----
 names dataset "nosuch", which the model does not declare
 
-# Aggregating over two datasets needs each aggregate computed at its own grain.
+# Aggregating at two grains needs one aggregate per grain. See ossie_grain.test.
 statement error
 SELECT ossie_compile(['store_productivity'], ['store.s_state'], []);
 ----
-aggregate over 2 datasets
+aggregate at 2 different grains
 
 statement error
 SELECT ossie_compile([], [], []);

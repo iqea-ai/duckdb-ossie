@@ -1,0 +1,58 @@
+# name: test/sql/ossie_grain.test
+# description: grain analysis and fan-out refusals
+# group: [sql]
+
+require ossie
+
+statement ok
+CALL ossie_load('test/fixtures/grain_model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
+
+# Two aggregates at different grains cannot share one GROUP BY.
+statement error
+SELECT ossie_compile(['store_productivity'], [], []);
+----
+aggregate at 2 different grains (store, store_sales)
+
+statement error
+SELECT ossie_compile(['customer_lifetime_value'], [], []);
+----
+aggregate at 2 different grains (customer, store_sales)
+
+statement error
+SELECT ossie_compile(['total_sales', 'store_productivity'], [], []);
+----
+aggregate at 2 different grains
+
+# A second dataset referenced as a scalar is functionally determined by the grain, so it is an
+# ordinary join rather than a fan-out. item must still be joined for the reference to bind.
+query T
+SELECT ossie_compile(['books_sales'], [], []);
+----
+SELECT sum(CASE  WHEN ((item.i_category = 'Books')) THEN (store_sales.ss_ext_sales_price) ELSE 0 END) AS books_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk))
+
+# COUNT(*) names no dataset, so alone there is no table to count.
+statement error
+SELECT ossie_compile(['transaction_count'], [], []);
+----
+has an aggregate with no column reference
+
+# Alongside a metric that does have a grain, COUNT(*) inherits it.
+query T
+SELECT ossie_compile(['total_sales', 'transaction_count'], [], []);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales, count_star() AS transaction_count FROM tpcds.main.store_sales AS store_sales
+
+# A dimension is not a grain: which dataset to count remains undetermined.
+statement error
+SELECT ossie_compile(['transaction_count'], ['item.i_brand'], []);
+----
+has an aggregate with no column reference
+
+# Joining across a many-to-many edge repeats fact rows into every aggregate.
+statement ok
+CALL ossie_load('test/fixtures/many_to_many_model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
+
+statement error
+SELECT ossie_compile(['total_sales'], ['store.s_state'], []);
+----
+repeats each "store_sales" row once per match
