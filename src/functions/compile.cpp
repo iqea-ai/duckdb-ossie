@@ -11,20 +11,6 @@ namespace ossie {
 
 namespace {
 
-vector<string> ToStringList(const Value &value) {
-	vector<string> result;
-	if (value.IsNull()) {
-		return result;
-	}
-	for (auto &child : ListValue::GetChildren(value)) {
-		if (child.IsNull()) {
-			throw InvalidInputException("ossie_compile: argument lists may not contain NULL");
-		}
-		result.push_back(child.GetValue<string>());
-	}
-	return result;
-}
-
 void CompileFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &context = state.GetContext();
 	auto &ossie_state = OssieState::Get(context);
@@ -34,9 +20,9 @@ void CompileFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	}
 
 	for (idx_t row = 0; row < args.size(); row++) {
-		auto metrics = ToStringList(args.data[0].GetValue(row));
-		auto dimensions = ToStringList(args.data[1].GetValue(row));
-		auto filters = ToStringList(args.data[2].GetValue(row));
+		auto metrics = ToStringList(args.data[0].GetValue(row), "ossie_compile");
+		auto dimensions = ToStringList(args.data[1].GetValue(row), "ossie_compile");
+		auto filters = ToStringList(args.data[2].GetValue(row), "ossie_compile");
 		CompileOptions options;
 		options.allow_filter_functions = ossie_state.AllowFilterFunctions();
 		auto sql = CompileToSQL(*model, metrics, dimensions, filters, options);
@@ -45,6 +31,20 @@ void CompileFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 }
 
 } // namespace
+
+vector<string> ToStringList(const Value &value, const char *function_name) {
+	vector<string> result;
+	if (value.IsNull()) {
+		return result;
+	}
+	for (auto &child : ListValue::GetChildren(value)) {
+		if (child.IsNull()) {
+			throw InvalidInputException("%s: argument lists may not contain NULL", function_name);
+		}
+		result.push_back(child.GetValue<string>());
+	}
+	return result;
+}
 
 void RegisterCompileFunction(ExtensionLoader &loader) {
 	auto string_list = LogicalType::LIST(LogicalType::VARCHAR);

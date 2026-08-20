@@ -26,7 +26,8 @@ set(EXTENSION_SOURCES
     src/compile/compile.cpp
     src/functions/load.cpp
     src/functions/compile.cpp
-    src/functions/describe.cpp)
+    src/functions/describe.cpp
+    src/functions/query.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})

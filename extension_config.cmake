@@ -5,5 +5,7 @@ duckdb_extension_load(ossie
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
 )
 
+duckdb_extension_load(tpcds)
+
 # Any extra extensions that should be built
 # e.g.: duckdb_extension_load(json)

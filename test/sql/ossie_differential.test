@@ -1,0 +1,75 @@
+# name: test/sql/ossie_differential.test
+# description: generated SQL must agree with hand-written SQL over real TPC-DS data
+# group: [sql]
+
+require ossie
+
+require tpcds
+
+statement ok
+CALL dsdgen(sf = 0.01);
+
+statement ok
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+# An ungrouped metric equals the plain aggregate.
+query I
+SELECT (SELECT total_sales FROM ossie_query(['total_sales']))
+     - (SELECT sum(ss_ext_sales_price) FROM store_sales);
+----
+0.00
+
+# Grouped by a dimension, every row must match the hand-written join. Symmetric EXCEPT so that
+# extra rows on either side are caught.
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM ossie_query(['total_sales'], ['item.i_brand'])
+   EXCEPT
+   SELECT i_brand, sum(ss_ext_sales_price) FROM store_sales JOIN item ON ss_item_sk = i_item_sk GROUP BY i_brand)
+  UNION ALL
+  (SELECT i_brand, sum(ss_ext_sales_price) FROM store_sales JOIN item ON ss_item_sk = i_item_sk GROUP BY i_brand
+   EXCEPT
+   SELECT * FROM ossie_query(['total_sales'], ['item.i_brand']))
+);
+----
+0
+
+# The same with a filter, which pulls date_dim into the join.
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM ossie_query(['total_sales'], ['item.i_brand'], ['date_dim.d_year = 2001'])
+   EXCEPT
+   SELECT i_brand, sum(ss_ext_sales_price) FROM store_sales
+     JOIN item ON ss_item_sk = i_item_sk
+     JOIN date_dim ON ss_sold_date_sk = d_date_sk
+   WHERE d_year = 2001 GROUP BY i_brand)
+  UNION ALL
+  (SELECT i_brand, sum(ss_ext_sales_price) FROM store_sales
+     JOIN item ON ss_item_sk = i_item_sk
+     JOIN date_dim ON ss_sold_date_sk = d_date_sk
+   WHERE d_year = 2001 GROUP BY i_brand
+   EXCEPT
+   SELECT * FROM ossie_query(['total_sales'], ['item.i_brand'], ['date_dim.d_year = 2001']))
+);
+----
+0
+
+# Joins are INNER, so grouping by a dimension whose foreign key is nullable drops those rows.
+# The shortfall is exactly the sales with no store, which pins the documented behaviour.
+query I
+SELECT (SELECT total_sales FROM ossie_query(['total_sales']))
+     - (SELECT sum(total_sales) FROM ossie_query(['total_sales'], ['store.s_state']))
+     - (SELECT sum(ss_ext_sales_price) FROM store_sales WHERE ss_store_sk IS NULL);
+----
+0.00
+
+# A metric referencing a second dataset as a scalar joins without fanning out.
+statement ok
+CALL ossie_load('test/fixtures/grain_model.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+query I
+SELECT (SELECT books_sales FROM ossie_query(['books_sales']))
+     - (SELECT sum(CASE WHEN i_category = 'Books' THEN ss_ext_sales_price ELSE 0 END)
+        FROM store_sales JOIN item ON ss_item_sk = i_item_sk);
+----
+0.00

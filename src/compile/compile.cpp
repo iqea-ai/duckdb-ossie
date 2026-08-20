@@ -438,8 +438,8 @@ unique_ptr<ParsedExpression> JoinCondition(const Relationship &relationship) {
 
 } // namespace
 
-string CompileToSQL(const Model &model, const vector<string> &metrics, const vector<string> &dimensions,
-                    const vector<string> &filters, const CompileOptions &options) {
+unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &metrics, const vector<string> &dimensions,
+                                    const vector<string> &filters, const CompileOptions &options) {
 	if (metrics.empty()) {
 		throw InvalidInputException("ossie_compile: at least one metric is required");
 	}
@@ -568,9 +568,14 @@ string CompileToSQL(const Model &model, const vector<string> &metrics, const vec
 	select->from_table = std::move(from);
 	select->aggregate_handling = AggregateHandling::STANDARD_HANDLING;
 
-	SelectStatement statement;
-	statement.node = std::move(select);
-	return statement.ToString();
+	auto statement = make_uniq<SelectStatement>();
+	statement->node = std::move(select);
+	return statement;
+}
+
+string CompileToSQL(const Model &model, const vector<string> &metrics, const vector<string> &dimensions,
+                    const vector<string> &filters, const CompileOptions &options) {
+	return Compile(model, metrics, dimensions, filters, options)->ToString();
 }
 
 } // namespace ossie
