@@ -103,24 +103,24 @@ Dimension ResolveDimension(const Model &model, const string &request) {
 	try {
 		parsed = Parser::ParseExpressionList(request);
 	} catch (const ParserException &) {
-		throw InvalidInputException("ossie_compile: dimension \"%s\" is not a valid name", request);
+		throw InvalidInputException("ossie: dimension \"%s\" is not a valid name", request);
 	}
 	if (parsed.size() != 1 || parsed[0]->GetExpressionClass() != ExpressionClass::COLUMN_REF) {
-		throw InvalidInputException("ossie_compile: dimension \"%s\" must be a dataset.field name", request);
+		throw InvalidInputException("ossie: dimension \"%s\" must be a dataset.field name", request);
 	}
 	auto &colref = parsed[0]->Cast<ColumnRefExpression>();
 	if (colref.column_names.size() != 2) {
-		throw InvalidInputException("ossie_compile: dimension \"%s\" must be qualified as dataset.field", request);
+		throw InvalidInputException("ossie: dimension \"%s\" must be qualified as dataset.field", request);
 	}
 
 	auto dataset = model.FindDataset(colref.column_names[0]);
 	if (!dataset) {
-		throw InvalidInputException("ossie_compile: dimension \"%s\" names dataset \"%s\", which the model does not "
+		throw InvalidInputException("ossie: dimension \"%s\" names dataset \"%s\", which the model does not "
 		                            "declare",
 		                            request, colref.column_names[0]);
 	}
 	if (!dataset->FindField(colref.column_names[1])) {
-		throw InvalidInputException("ossie_compile: dataset \"%s\" has no field \"%s\".%s", dataset->name,
+		throw InvalidInputException("ossie: dataset \"%s\" has no field \"%s\".%s", dataset->name,
 		                            colref.column_names[1],
 		                            StringUtil::CandidatesErrorMessage(DimensionNames(model), request, "Did you mean"));
 	}
@@ -206,17 +206,16 @@ void CheckFilterNode(const ParsedExpression &expr, const string &request, const 
 		if (function.is_operator || IsAggregateName(function.function_name) || options.allow_filter_functions) {
 			return;
 		}
-		throw InvalidInputException("ossie_compile: filter \"%s\" calls function \"%s\". Load the model with "
+		throw InvalidInputException("ossie: filter \"%s\" calls function \"%s\". Load the model with "
 		                            "allow_filter_functions => true to permit function calls in filters",
 		                            request, function.function_name);
 	}
 	case ExpressionClass::SUBQUERY:
-		throw InvalidInputException("ossie_compile: filter \"%s\" contains a subquery, which could read tables the "
+		throw InvalidInputException("ossie: filter \"%s\" contains a subquery, which could read tables the "
 		                            "model does not declare",
 		                            request);
 	default:
-		throw InvalidInputException("ossie_compile: filter \"%s\" uses an expression that is not allowed in a filter",
-		                            request);
+		throw InvalidInputException("ossie: filter \"%s\" uses an expression that is not allowed in a filter", request);
 	}
 }
 
@@ -239,7 +238,7 @@ string AggregateGrain(const Model &model, const case_insensitive_set_t &datasets
 	}
 	if (candidates.size() != 1) {
 		vector<string> names(datasets.begin(), datasets.end());
-		throw InvalidInputException("ossie_compile: an aggregate in metric \"%s\" spans datasets %s, and none of them "
+		throw InvalidInputException("ossie: an aggregate in metric \"%s\" spans datasets %s, and none of them "
 		                            "is the grain the others hang off, so there is no single set of rows to aggregate",
 		                            metric_name, StringUtil::Join(names, ", "));
 	}
@@ -282,7 +281,7 @@ void ResolveFilterNames(const Model &model, unique_ptr<ParsedExpression> &expr, 
 			auto metric = model.FindMetric(colref.column_names[0]);
 			if (!metric) {
 				throw InvalidInputException(
-				    "ossie_compile: filter \"%s\" references \"%s\", which is neither a "
+				    "ossie: filter \"%s\" references \"%s\", which is neither a "
 				    "metric nor a dataset.field name.%s",
 				    request, colref.column_names[0],
 				    StringUtil::CandidatesErrorMessage(MetricNames(model), colref.column_names[0], "Did you mean"));
@@ -294,19 +293,19 @@ void ResolveFilterNames(const Model &model, unique_ptr<ParsedExpression> &expr, 
 			return;
 		}
 		if (colref.column_names.size() != 2) {
-			throw InvalidInputException("ossie_compile: filter \"%s\" references \"%s\"; columns must be qualified "
+			throw InvalidInputException("ossie: filter \"%s\" references \"%s\"; columns must be qualified "
 			                            "as dataset.field",
 			                            request, StringUtil::Join(colref.column_names, "."));
 		}
 		auto dataset = model.FindDataset(colref.column_names[0]);
 		if (!dataset) {
-			throw InvalidInputException("ossie_compile: filter \"%s\" references dataset \"%s\", which the model does "
+			throw InvalidInputException("ossie: filter \"%s\" references dataset \"%s\", which the model does "
 			                            "not declare",
 			                            request, colref.column_names[0]);
 		}
 		if (!dataset->FindField(colref.column_names[1])) {
 			throw InvalidInputException(
-			    "ossie_compile: filter \"%s\" references \"%s.%s\", which the model does not declare.%s", request,
+			    "ossie: filter \"%s\" references \"%s.%s\", which the model does not declare.%s", request,
 			    colref.column_names[0], colref.column_names[1],
 			    StringUtil::CandidatesErrorMessage(
 			        DimensionNames(model), colref.column_names[0] + "." + colref.column_names[1], "Did you mean"));
@@ -336,11 +335,10 @@ Filter ResolveFilter(const Model &model, const string &request, const CompileOpt
 	try {
 		parsed = Parser::ParseExpressionList(request);
 	} catch (const ParserException &ex) {
-		throw InvalidInputException("ossie_compile: filter \"%s\" does not parse: %s", request,
-		                            ErrorData(ex).RawMessage());
+		throw InvalidInputException("ossie: filter \"%s\" does not parse: %s", request, ErrorData(ex).RawMessage());
 	}
 	if (parsed.size() != 1) {
-		throw InvalidInputException("ossie_compile: filter \"%s\" must be a single predicate", request);
+		throw InvalidInputException("ossie: filter \"%s\" must be a single predicate", request);
 	}
 
 	// Policy is checked before names are resolved, so the message names what the caller wrote.
@@ -391,7 +389,7 @@ vector<PlannedJoin> PlanJoins(const Model &model, const Dataset &root, const cas
 			bool is_tree_edge = (reached_by != parent_edge.end() && reached_by->second == &relationship) ||
 			                    (came_by != parent_edge.end() && came_by->second == &relationship);
 			if (!is_tree_edge && required.find(other) != required.end()) {
-				throw InvalidInputException("ossie_compile: more than one join path connects \"%s\" to \"%s\"; "
+				throw InvalidInputException("ossie: more than one join path connects \"%s\" to \"%s\"; "
 				                            "the model must disambiguate before this can be answered",
 				                            root.name, other);
 			}
@@ -403,7 +401,7 @@ vector<PlannedJoin> PlanJoins(const Model &model, const Dataset &root, const cas
 	case_insensitive_set_t added;
 	for (auto &name : required) {
 		if (visited.find(name) == visited.end()) {
-			throw InvalidInputException("ossie_compile: no relationship connects \"%s\" to \"%s\"", root.name, name);
+			throw InvalidInputException("ossie: no relationship connects \"%s\" to \"%s\"", root.name, name);
 		}
 		vector<string> path;
 		for (auto node = name; !StringUtil::CIEquals(node, root.name); node = parent[node]) {
@@ -441,7 +439,7 @@ unique_ptr<ParsedExpression> JoinCondition(const Relationship &relationship) {
 unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &metrics, const vector<string> &dimensions,
                                     const vector<string> &filters, const CompileOptions &options) {
 	if (metrics.empty()) {
-		throw InvalidInputException("ossie_compile: at least one metric is required");
+		throw InvalidInputException("ossie: at least one metric is required");
 	}
 
 	auto select = make_uniq<SelectNode>();
@@ -455,7 +453,7 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 		auto metric = model.FindMetric(metric_name);
 		if (!metric) {
 			throw InvalidInputException(
-			    "ossie_compile: model \"%s\" has no metric named \"%s\".%s", model.name, metric_name,
+			    "ossie: model \"%s\" has no metric named \"%s\".%s", model.name, metric_name,
 			    StringUtil::CandidatesErrorMessage(MetricNames(model), metric_name, "Did you mean"));
 		}
 		bool metric_grainless = false;
@@ -475,18 +473,18 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 	// One query has one set of rows to group, so every aggregate must sit at the same grain.
 	if (grains.size() > 1) {
 		vector<string> names(grains.begin(), grains.end());
-		throw InvalidInputException("ossie_compile: these metrics aggregate at %s different grains (%s). Computing "
+		throw InvalidInputException("ossie: these metrics aggregate at %s different grains (%s). Computing "
 		                            "them together needs one aggregate per grain, which is not supported yet",
 		                            to_string(grains.size()), StringUtil::Join(names, ", "));
 	}
 	if (grains.empty()) {
 		if (has_grainless) {
-			throw InvalidInputException("ossie_compile: metric \"%s\" has an aggregate with no column reference, so "
+			throw InvalidInputException("ossie: metric \"%s\" has an aggregate with no column reference, so "
 			                            "there is no dataset to aggregate over. Qualify it, for example "
 			                            "COUNT(store_sales.ss_item_sk) rather than COUNT(*)",
 			                            grainless_metric);
 		}
-		throw InvalidInputException("ossie_compile: no requested metric contains an aggregate, so the query has no "
+		throw InvalidInputException("ossie: no requested metric contains an aggregate, so the query has no "
 		                            "grain to group by");
 	}
 	// A grainless aggregate is safe once one grain exists: fan-out is refused below, so the joined
@@ -546,7 +544,7 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 	for (auto &planned : planned_joins) {
 		bool moving_to_target = StringUtil::CIEquals(planned.relationship->to_dataset, planned.dataset->name);
 		if (FansOut(*planned.relationship, moving_to_target)) {
-			throw InvalidInputException("ossie_compile: joining \"%s\" repeats each \"%s\" row once per match, which "
+			throw InvalidInputException("ossie: joining \"%s\" repeats each \"%s\" row once per match, which "
 			                            "would inflate every aggregate. Relationship \"%s\" is %s",
 			                            planned.dataset->name, root.name, planned.relationship->name,
 			                            CardinalityName(planned.relationship->cardinality));

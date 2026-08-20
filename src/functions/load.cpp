@@ -115,7 +115,7 @@ void LoadFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk 
 } // namespace
 
 OssieState &OssieState::Get(ClientContext &context) {
-	return *context.registered_state->GetOrCreate<OssieState>(STATE_KEY);
+	return *ObjectCache::GetObjectCache(context).GetOrCreate<OssieState>(STATE_KEY);
 }
 
 void OssieState::SetModel(shared_ptr<Model> new_model, bool allow_filter_functions_p) {
