@@ -1,8 +1,14 @@
 # duckdb_ossie
 
+[![Main Extension Distribution Pipeline](https://github.com/iqea-ai/duckdb-ossie/actions/workflows/MainDistributionPipeline.yml/badge.svg?branch=main)](https://github.com/iqea-ai/duckdb-ossie/actions/workflows/MainDistributionPipeline.yml)
+[![Community Extension](https://img.shields.io/badge/community--extensions-ossie-blue)](https://github.com/duckdb/community-extensions/blob/main/extensions/ossie/description.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A DuckDB extension that reads [Apache Ossie](https://github.com/apache/ossie) (incubating)
 semantic model files and answers semantic queries against the tables they describe — locally,
 from a single binary, with no infrastructure.
+
+**This extension works with DuckDB v1.5.5.**
 
 Ossie is a vendor-neutral file format for semantic models: `datasets` bound to physical tables,
 `fields`, declared `relationships`, and `metrics` written as aggregate expressions. It describes
@@ -106,3 +112,7 @@ For the architecture and how to work on the compiler, see
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+This project is an independent implementation that reads the Apache Ossie file format. It is not
+affiliated with, endorsed by, or an official product of the Apache Software Foundation. "Apache
+Ossie" and "Apache" are trademarks of the Apache Software Foundation.
