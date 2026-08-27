@@ -2,6 +2,7 @@
 
 #include "ossie/graph.hpp"
 #include "ossie/validate.hpp"
+#include "ossie/yaml.hpp"
 
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/exception.hpp"
@@ -474,6 +475,14 @@ Model LoadModel(ClientContext &context, const string &path, const RebindMap &reb
 	auto file_size = handle->GetFileSize();
 	string contents(file_size, '\0');
 	handle->Read(reinterpret_cast<void *>(&contents[0]), file_size);
+
+	// The Ossie ecosystem publishes models as YAML. Converting to JSON here, rather than teaching
+	// the parser a second syntax, keeps every validation guard and the whole compiler unaware of
+	// how the file was serialized. Sniffing the content rather than the extension means a .txt or
+	// extensionless model still works, and JSON stays the fast path.
+	if (LooksLikeYaml(contents)) {
+		contents = YamlToJson(contents, StringUtil::Format("\"%s\"", path));
+	}
 	return ParseModel(contents, rebind);
 }
 

@@ -91,7 +91,8 @@ refused outright, and no argument lets a caller widen that.
 
 ## Building
 
-No vcpkg or third-party dependencies; JSON parsing uses the yyjson DuckDB already vendors.
+No vcpkg and no build-time dependency fetching. JSON parsing uses the yyjson DuckDB already vendors;
+YAML support is a single vendored header ([third_party/fkyaml](third_party/fkyaml), MIT).
 
 ```sh
 git submodule update --init --recursive
