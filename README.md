@@ -92,7 +92,7 @@ git submodule update --init --recursive
 make
 ```
 
-Submodules are pinned by recorded commit (DuckDB `v1.5.4`). DuckDB's parser and planner internals
+Submodules are pinned by recorded commit (DuckDB `v1.5.5`). DuckDB's parser and planner internals
 are not a stable API, so the pin is deliberate and upgrades are expected to need work. The first
 build compiles DuckDB from source and takes a while; later builds are incremental.
 
