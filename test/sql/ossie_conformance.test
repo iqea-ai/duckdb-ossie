@@ -38,16 +38,27 @@ CALL ossie_load('test/fixtures/conformance/fixtureA_ossie.yaml');
 ----
 no expression in a dialect this extension can execute
 
-# --- known-rejected: valid against the official schema, refused by our stricter validation -------
-# These two should become `query` cases when the relationship-column and field-expression rules are
-# relaxed. Until then they are pinned so the change is visible when it happens.
+# --- loads after relaxing the over-strict validation ---------------------------------------------
+# Both of these are valid against the official core-spec schema but were refused because our
+# validation required every column named in a relationship or a field expression to also be
+# declared as a field. The format requires neither.
 
-statement error
+# gooddata's model: a dimensional model with no measures at all, which is legal.
+query TTIIII
 CALL ossie_load('test/fixtures/conformance/osi_tpcds.yaml');
 ----
-does not declare as a field
+tpcds_model	0.2.0.dev0	5	20	4	0
 
-statement error
+# nvidia's model. It loads, and its one metric is then refused for a real reason: it averages over
+# two datasets, so there is no single grain to aggregate at. Loading a model and answering a query
+# are separate questions, and this is what it looks like when the first succeeds and the second
+# correctly does not.
+query TTIIII
 CALL ossie_load('test/fixtures/conformance/sales.ossie.yaml');
 ----
-does not declare as a field
+sales	0.2.0.dev0	2	6	1	1
+
+statement error
+SELECT ossie_compile(['revenue_per_customer'], [], []);
+----
+different grains

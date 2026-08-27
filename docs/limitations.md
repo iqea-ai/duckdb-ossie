@@ -66,4 +66,13 @@ source can neither be prefix-rebound nor bound as a table reference, so it is re
 
 **Unqualified columns in metrics.** A metric must write `store_sales.ss_ext_sales_price` rather
 than `ss_ext_sales_price`. A bare column cannot say which dataset it belongs to, and a metric's
-dataset is its grain.
+dataset is its grain. Note this is a requirement about *qualification*, not about declaration: the
+column itself need not appear in the dataset's `fields`.
+
+**Columns that are not declared fields are passed through, not refused.** The format requires
+neither that a relationship's columns be declared fields nor that a field or metric expression
+reference only declared fields, and real third-party models rely on both. Such a name is treated as
+a physical column and resolved by DuckDB's binder. The tradeoff is deliberate and has a cost: a
+genuine typo in a model expression is no longer caught by `ossie_load`, and instead surfaces as a
+binder error when a query touches it. That message names the column and the table, so it is a worse
+message arriving later — not a wrong answer.

@@ -16,15 +16,17 @@ moves.
 |---|---|---|
 | `tpcds_osi.yaml` | `converters/orionbelt/tests/fixtures/` | yes |
 | `fixtureA_osi.yaml` | `converters/omni/tests/fixtures/` | yes |
-| `osi_tpcds.yaml` | `converters/gooddata/tests/fixtures/` | no — validation stricter than the spec |
-| `sales.ossie.yaml` | `converters/nvidia/tests/fixtures/` | no — validation stricter than the spec |
+| `osi_tpcds.yaml` | `converters/gooddata/tests/fixtures/` | yes |
+| `sales.ossie.yaml` | `converters/nvidia/tests/fixtures/` | yes (its one metric is multi-grain, so queries on it are refused) |
 | `fixtureA_ossie.yaml` | `converters/databricks/tests/fixtures/` | no — carries only `DATABRICKS` expressions |
 
 `osi-schema.json` is the official `core-spec/osi-schema.json`, kept so the models here (and our own)
 can be validated against the format's own definition rather than against our reading of it.
 
-The `no` rows are tracked deliberately. Only the last one is a correct refusal: that model has no
-`ANSI_SQL` expression, so this extension genuinely cannot execute it. The other two are valid
-against the official schema and should load once the over-strict rules in `validate.cpp` are
-relaxed. As that happens, move rows from `no` to `yes` here and in
-`test/sql/ossie_conformance.test`.
+Four of five load. The one refusal is correct: that model carries only `DATABRICKS` expressions, so
+this extension genuinely cannot execute it.
+
+The gooddata and nvidia models were refused until the declared-field requirements were removed from
+`validate.cpp` — both are valid against the official schema, which requires neither that a
+relationship's columns be declared fields nor that a field expression reference only declared
+fields. Keep this table and `test/sql/ossie_conformance.test` in step when the number changes.

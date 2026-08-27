@@ -44,7 +44,18 @@ void InlineFields(const Model &model, unique_ptr<ParsedExpression> &expr) {
 		auto &colref = expr->Cast<ColumnRefExpression>();
 		if (colref.column_names.size() == 2) {
 			auto dataset = model.FindDataset(colref.column_names[0]);
+			if (!dataset) {
+				// Not a model dataset -- already a physical reference, leave it alone.
+				return;
+			}
 			auto field = dataset->FindField(colref.column_names[1]);
+			if (!field) {
+				// The Ossie schema does not require that every column a model expression names be
+				// declared as a field, and real models rely on that. Such a name is a physical
+				// column: qualify it to the bound alias and let DuckDB's binder resolve it.
+				expr = make_uniq<ColumnRefExpression>(colref.column_names[1], AliasFor(*dataset));
+				return;
+			}
 			auto replacement = field->expression.tree->Copy();
 			QualifyColumns(replacement, AliasFor(*dataset));
 			expr = std::move(replacement);

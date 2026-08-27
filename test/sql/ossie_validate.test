@@ -14,10 +14,28 @@ CALL ossie_load('test/fixtures/invalid/dangling_relationship.json');
 ----
 relationship "store_sales_to_date" has 'to' dataset "date_dimension", which the model does not declare
 
-statement error
-CALL ossie_load('test/fixtures/invalid/undeclared_column.json');
+# A column a model expression names but never declares as a field is NOT an error. The Ossie schema
+# does not require the declaration, and real third-party models rely on that (see
+# test/fixtures/conformance/). Such a name is treated as a physical column.
+#
+# The cost of that choice is recorded here rather than left implicit: a genuine typo is no longer
+# caught at load, and surfaces as a binder error when the query runs. The message still names the
+# column and the table, so it is a worse message, later -- not a silent wrong answer.
+statement ok
+CALL ossie_load('test/fixtures/undeclared_column_model.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+query T
+SELECT ossie_compile(['total_sales'], [], []);
 ----
-metric "total_sales" references column "ss_bogus", which dataset "store_sales" does not declare as a field
+SELECT sum(store_sales.ss_bogus) AS total_sales FROM memory.main.store_sales AS store_sales
+
+statement ok
+CREATE TABLE store_sales(ss_ext_sales_price DECIMAL(10,2));
+
+statement error
+SELECT * FROM ossie_query(['total_sales']);
+----
+ss_bogus
 
 # An unqualified column in a metric leaves its grain ambiguous, so it is refused rather than guessed.
 statement error
