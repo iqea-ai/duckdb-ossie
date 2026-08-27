@@ -19,6 +19,39 @@ struct ModelExpression {
 	string sql;
 	unique_ptr<ParsedExpression> tree;
 	vector<string> available_dialects;
+
+	// `tree` is a unique_ptr, which would make every enclosing type (Field, Dataset, Model)
+	// move-only. That breaks MSVC: std::vector reallocation uses move_if_noexcept, and Dataset's
+	// implicit move is potentially-throwing because it holds a case_insensitive_map_t (an
+	// unordered_map, whose move is not noexcept in MSVC's STL). MSVC therefore falls back to the
+	// copy path and fails to compile with "attempting to reference a deleted function", while
+	// libc++ and libstdc++ pick move and build fine.
+	//
+	// Rather than hand-write noexcept moves on three structs (and have to remember to update them
+	// whenever a member is added), give the one type that owns the pointer a deep-copying copy
+	// constructor. Everything above it then gets correct implicit copy and move operations.
+	// Copies only happen on vector reallocation, where cloning a handful of expression trees is
+	// irrelevant next to parsing them in the first place.
+	//
+	// Do NOT "fix" this by writing `noexcept = default` on the moves: when the implicit exception
+	// specification disagrees, C++17 defines the defaulted function as deleted, which reintroduces
+	// the same error by a longer route.
+	ModelExpression() = default;
+	ModelExpression(ModelExpression &&) = default;
+	ModelExpression &operator=(ModelExpression &&) = default;
+	ModelExpression(const ModelExpression &other)
+	    : dialect(other.dialect), sql(other.sql), tree(other.tree ? other.tree->Copy() : nullptr),
+	      available_dialects(other.available_dialects) {
+	}
+	ModelExpression &operator=(const ModelExpression &other) {
+		if (this != &other) {
+			dialect = other.dialect;
+			sql = other.sql;
+			tree = other.tree ? other.tree->Copy() : nullptr;
+			available_dialects = other.available_dialects;
+		}
+		return *this;
+	}
 };
 
 struct Field {
