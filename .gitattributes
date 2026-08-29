@@ -1,8 +1,17 @@
-# Vendored third-party sources. We do not author or maintain these, so they should not appear in
-# language statistics or expand in diffs -- the fkYAML single header is 15k lines and would
-# otherwise bury the ~165 lines of our own code that landed alongside it.
-third_party/**              linguist-vendored
-third_party/fkyaml/*.hpp    -diff linguist-vendored
+# Vendored third-party sources. We neither author nor maintain these.
+#
+# Three attributes, doing three different jobs -- and one thing none of them do:
+#   linguist-vendored   : keeps the file out of GitHub's language statistics
+#   linguist-generated  : collapses the file by default in GitHub's "Files changed" view,
+#                         so a reviewer sees our code instead of scrolling past a parser
+#   -diff               : makes LOCAL `git diff`/`git show` treat it as binary
+#
+# GitHub's additions/deletions counter is computed from the raw diff and honours none of these,
+# so the PR header will still report the vendored line count. That is cosmetic; what matters is
+# that the review view collapses it. Do not chase the header number -- the only way to move it is
+# to not commit the file, and third_party/fkyaml/README.md records why we do.
+third_party/**                linguist-vendored linguist-generated
+third_party/fkyaml/*.hpp      -diff linguist-vendored linguist-generated
 
-# Ossie models copied verbatim from apache/ossie. They are test data, not our source.
-test/fixtures/conformance/**  linguist-vendored
+# Ossie models copied verbatim from apache/ossie: test data, not our source.
+test/fixtures/conformance/**  linguist-vendored linguist-generated
