@@ -1,0 +1,8 @@
+# Vendored third-party sources. We do not author or maintain these, so they should not appear in
+# language statistics or expand in diffs -- the fkYAML single header is 15k lines and would
+# otherwise bury the ~165 lines of our own code that landed alongside it.
+third_party/**              linguist-vendored
+third_party/fkyaml/*.hpp    -diff linguist-vendored
+
+# Ossie models copied verbatim from apache/ossie. They are test data, not our source.
+test/fixtures/conformance/**  linguist-vendored
