@@ -44,20 +44,72 @@ yyjson_val *Member(yyjson_val *obj, const char *key) {
 	return yyjson_obj_get(obj, key);
 }
 
+//! Renders a scalar as text. Every value the Ossie schema calls a string is read through here.
+//!
+//! Numbers and booleans are accepted rather than rejected because a model can easily arrive with
+//! them by accident, and the author's intent is unambiguous. `version: 1.5` in YAML is a float --
+//! quoting is what makes it a string, and nothing prompts you to quote it. The same is true of
+//! `"version": 1.5` in JSON. Before this, both silently produced an empty string: the value was
+//! neither used nor reported, which is the worst of the three options.
+//!
+//! Null and containers return false; the caller decides whether that is an error or an absent
+//! optional field.
+//!
+//! One caveat: a float's text is normalised by the round trip, so `1.50` reads back as `1.5`. The
+//! original spelling is gone by the time yyjson sees it. Quote the value to preserve it exactly.
+bool ScalarText(yyjson_val *val, string &out) {
+	if (!val) {
+		return false;
+	}
+	if (yyjson_is_str(val)) {
+		out = string(yyjson_get_str(val));
+		return true;
+	}
+	if (yyjson_is_bool(val)) {
+		out = yyjson_get_bool(val) ? "true" : "false";
+		return true;
+	}
+	if (yyjson_is_int(val)) {
+		out = to_string(yyjson_get_sint(val));
+		return true;
+	}
+	if (yyjson_is_uint(val)) {
+		out = to_string(yyjson_get_uint(val));
+		return true;
+	}
+	if (yyjson_is_real(val)) {
+		// %.17g round-trips a double exactly; trim the trailing zeros it can leave behind.
+		auto text = StringUtil::Format("%.17g", yyjson_get_real(val));
+		if (text.find('.') != string::npos && text.find('e') == string::npos && text.find('E') == string::npos) {
+			while (!text.empty() && text.back() == '0') {
+				text.pop_back();
+			}
+			if (!text.empty() && text.back() == '.') {
+				text.pop_back();
+			}
+		}
+		out = text;
+		return true;
+	}
+	return false;
+}
+
 string RequiredString(yyjson_val *obj, const char *key, const string &context) {
 	auto val = Member(obj, key);
-	if (!val || !yyjson_is_str(val)) {
+	string text;
+	if (!val || yyjson_is_null(val)) {
 		throw InvalidInputException("ossie_load: %s is missing required string field '%s'", context, key);
 	}
-	return string(yyjson_get_str(val));
+	if (!ScalarText(val, text)) {
+		throw InvalidInputException("ossie_load: %s field '%s' must be a string, but is a %s", context, key,
+		                            yyjson_is_arr(val) ? "list" : "nested object");
+	}
+	return text;
 }
 
 string OptionalString(yyjson_val *obj, const char *key) {
-	auto val = Member(obj, key);
-	if (!val || !yyjson_is_str(val)) {
-		return string();
-	}
-	return string(yyjson_get_str(val));
+	string text;
+	return ScalarText(Member(obj, key), text) ? text : string();
 }
 
 vector<string> StringArray(yyjson_val *obj, const char *key, const string &context) {
@@ -72,10 +124,11 @@ vector<string> StringArray(yyjson_val *obj, const char *key, const string &conte
 	size_t idx, max;
 	yyjson_val *item;
 	yyjson_arr_foreach(arr, idx, max, item) {
-		if (!yyjson_is_str(item)) {
+		string text;
+		if (!ScalarText(item, text)) {
 			throw InvalidInputException("ossie_load: %s field '%s' must contain only strings", context, key);
 		}
-		result.emplace_back(yyjson_get_str(item));
+		result.emplace_back(std::move(text));
 	}
 	return result;
 }
