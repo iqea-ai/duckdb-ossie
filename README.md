@@ -4,9 +4,9 @@
 [![Community Extension](https://img.shields.io/badge/community--extensions-ossie-blue)](https://github.com/duckdb/community-extensions/blob/main/extensions/ossie/description.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A DuckDB extension that reads [Apache Ossie](https://github.com/apache/ossie) (incubating)
-semantic model files and answers semantic queries against the tables they describe — locally,
-from a single binary, with no infrastructure.
+The [Apache Ossie](https://github.com/apache/ossie) (incubating) reference implementation for
+DuckDB. It reads Ossie semantic model files — YAML or JSON — and answers semantic queries against
+the tables they describe, locally, from a single binary, with no infrastructure.
 
 **This extension works with DuckDB v1.5.5.**
 
@@ -16,8 +16,25 @@ data in place and never transforms it. What the format deliberately leaves open 
 those definitions go into — the joins, the `GROUP BY`, and the grain — because those depend on the
 question being asked, and the file does not know the question.
 
-Every shipped Ossie implementation today is a *converter*, translating definitions into some
-vendor's semantic layer so that vendor's engine can run them. This extension is the missing engine.
+**Every other shipped Ossie implementation is a converter**, translating definitions into some
+vendor's semantic layer so that vendor's engine can run them. This one executes the query itself:
+it plans the joins, derives the grain, and emits SQL that DuckDB runs. It is the first Ossie
+implementation that answers a question rather than translating one.
+
+### Conformance
+
+Claims about a file format should be checkable, so:
+
+- Models are validated against the format's own [`core-spec/osi-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/osi-schema.json)
+- The suite includes five models published by *other* Ossie implementers — Databricks, GoodData,
+  NVIDIA, Omni and OrionBelt — vendored verbatim from `apache/ossie`. Four load and answer queries.
+  The fifth carries only `DATABRICKS` expressions, which this extension does not execute
+- Generated SQL is checked against hand-written TPC-DS SQL at `sf=1` across every metric and every
+  dimension, so correctness is measured against the numbers rather than against our own output
+
+What is not yet supported is listed in [docs/limitations.md](docs/limitations.md): `ANSI_SQL`
+expressions only, one semantic model per file, table-backed sources only, and metrics that span
+more than one grain are refused rather than answered wrongly.
 
 ```sql
 CALL ossie_load('model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
