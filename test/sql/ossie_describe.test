@@ -37,7 +37,7 @@ customer	true	c_first_name || ' ' || c_last_name
 query TT
 SELECT name, datatype FROM ossie_fields() WHERE datatype IS NULL ORDER BY name;
 ----
-d_month_name	NULL
+d_moy	NULL
 d_quarter_name	NULL
 
 # store keys on primary_key but declares a different unique_keys entry.
