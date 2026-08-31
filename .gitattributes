@@ -10,8 +10,5 @@
 # so the PR header will still report the vendored line count. That is cosmetic; what matters is
 # that the review view collapses it. Do not chase the header number -- the only way to move it is
 # to not commit the file, and third_party/fkyaml/README.md records why we do.
-third_party/**                linguist-vendored linguist-generated
-third_party/fkyaml/*.hpp      -diff linguist-vendored linguist-generated
-
 # Ossie models copied verbatim from apache/ossie: test data, not our source.
 test/fixtures/conformance/**  linguist-vendored linguist-generated
