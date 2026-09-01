@@ -6,7 +6,8 @@
 
 The [Apache Ossie](https://github.com/apache/ossie) (incubating) reference implementation for
 DuckDB. It reads Ossie semantic model files — YAML or JSON — and answers semantic queries against
-the tables they describe, locally, from a single binary, with no infrastructure.
+the tables in DuckDB, from a single binary, with no infrastructure. This extension also exposes the
+semantic layer via MCP.
 
 **This extension works with DuckDB v1.5.5.**
 

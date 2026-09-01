@@ -1,8 +1,8 @@
 extension:
   name: ossie
   description: The Apache Ossie (incubating) reference implementation for DuckDB. Reads Ossie
-    semantic model files in YAML or JSON and answers semantic queries against the tables they
-    describe -- planning the joins, deriving the grain, and emitting SQL DuckDB executes.
+    semantic model files in YAML or JSON and answers semantic queries against the tables in DuckDB,
+    from a single binary, with no infrastructure. Also exposes the semantic layer via MCP.
   version: 0.1.0
   language: C++
   build: cmake
