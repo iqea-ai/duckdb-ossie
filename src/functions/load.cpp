@@ -6,6 +6,7 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "ossie/describe_functions.hpp"
 #include "ossie/parser.hpp"
 #include "ossie/state.hpp"
 
@@ -139,7 +140,19 @@ void RegisterLoadFunction(ExtensionLoader &loader) {
 	ossie_load.named_parameters["rebind"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 	ossie_load.named_parameters["validate_sources"] = LogicalType::BOOLEAN;
 	ossie_load.named_parameters["allow_filter_functions"] = LogicalType::BOOLEAN;
-	loader.RegisterFunction(ossie_load);
+
+	CreateTableFunctionInfo info(ossie_load);
+	info.descriptions.push_back(Describe(
+	    {"path"},
+	    "Parse and validate an Apache Ossie semantic model, in YAML or JSON, and hold it for the "
+	    "database. Named parameters: rebind (MAP) remaps warehouse-qualified source prefixes onto the "
+	    "local catalog; validate_sources (BOOLEAN, default false) requires every dataset's table to "
+	    "exist and reports all failures at once; allow_filter_functions (BOOLEAN, default false) lets "
+	    "request-supplied filters call named functions, and is set here so a caller supplying filters "
+	    "cannot widen its own policy.",
+	    {"CALL ossie_load('model.yaml')", "CALL ossie_load('model.json', rebind => MAP{'tpcds.public': 'memory.main'})",
+	     "CALL ossie_load('model.yaml', validate_sources => true)"}));
+	loader.RegisterFunction(std::move(info));
 }
 
 } // namespace ossie

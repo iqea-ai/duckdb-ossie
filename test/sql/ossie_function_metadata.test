@@ -1,0 +1,52 @@
+# name: test/sql/ossie_function_metadata.test
+# description: every registered function carries the metadata the registry publishes
+# group: [sql]
+
+# The community-extensions registry builds each extension's documentation page by snapshotting
+# duckdb_functions() before and after loading the extension and diffing the two, then rendering the
+# description, parameter names and examples it finds there. Anything left unset publishes as an
+# empty column on a public page, and nothing in the build warns you.
+#
+# Note the overload subtlety: when a function has several overloads, duckdb_functions() decides
+# which description belongs to which by scoring declared parameter_types against actual ones. A
+# description with no types attached matches nothing, so all three ossie_query rows rendered empty
+# until the types were declared. That is why arity is asserted here rather than just a count.
+
+require ossie
+
+# Every function has a description.
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE starts_with(function_name, 'ossie_') AND (description IS NULL OR description = '');
+----
+0
+
+# Every function has at least one runnable example.
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE starts_with(function_name, 'ossie_') AND (examples IS NULL OR len(examples) = 0);
+----
+0
+
+# All nine registrations are present: seven names, with ossie_query contributing three overloads.
+query II
+SELECT count(*), count(DISTINCT function_name) FROM duckdb_functions()
+WHERE starts_with(function_name, 'ossie_');
+----
+9	7
+
+# Each ossie_query overload resolves to its own description rather than falling through to none.
+query II
+SELECT len(parameters), CASE WHEN description IS NULL THEN 'MISSING' ELSE 'present' END
+FROM duckdb_functions() WHERE function_name = 'ossie_query' ORDER BY len(parameters);
+----
+1	present
+2	present
+3	present
+
+# Categories are set, so the page groups these functions rather than scattering them.
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE starts_with(function_name, 'ossie_') AND NOT list_contains(categories, 'ossie');
+----
+0

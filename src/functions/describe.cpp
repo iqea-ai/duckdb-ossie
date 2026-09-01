@@ -3,6 +3,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "ossie/catalog.hpp"
+#include "ossie/describe_functions.hpp"
 #include "ossie/functions.hpp"
 #include "ossie/state.hpp"
 
@@ -169,12 +170,35 @@ void MetricsFunction(ClientContext &context, TableFunctionInput &data_p, DataChu
 
 } // namespace
 
+//! Registers one description table function with the metadata duckdb_functions() exposes.
+void RegisterDescribe(ExtensionLoader &loader, TableFunction function, const string &description,
+                      const string &example) {
+	CreateTableFunctionInfo info(std::move(function));
+	info.descriptions.push_back(Describe({}, description, {example}));
+	loader.RegisterFunction(std::move(info));
+}
+
 void RegisterDescribeFunctions(ExtensionLoader &loader) {
-	loader.RegisterFunction(
-	    TableFunction("ossie_relationships", {}, RelationshipsFunction, RelationshipsBind, DescribeInit));
-	loader.RegisterFunction(TableFunction("ossie_datasets", {}, DatasetsFunction, DatasetsBind, DescribeInit));
-	loader.RegisterFunction(TableFunction("ossie_fields", {}, FieldsFunction, FieldsBind, DescribeInit));
-	loader.RegisterFunction(TableFunction("ossie_metrics", {}, MetricsFunction, MetricsBind, DescribeInit));
+	RegisterDescribe(loader,
+	                 TableFunction("ossie_relationships", {}, RelationshipsFunction, RelationshipsBind, DescribeInit),
+	                 "List the loaded model's relationships with the cardinality derived from the endpoints' declared "
+	                 "keys. Ossie does not state cardinality; it is inferred by checking whether a relationship's join "
+	                 "columns match the target's primary_key or a unique_keys entry, and it is what makes a fan-out "
+	                 "join detectable.",
+	                 "SELECT name, from_dataset, to_dataset, cardinality FROM ossie_relationships()");
+	RegisterDescribe(loader, TableFunction("ossie_datasets", {}, DatasetsFunction, DatasetsBind, DescribeInit),
+	                 "List the loaded model's datasets: the source as written in the model, the source after "
+	                 "rebinding, whether that table currently resolves, declared keys, and synonyms.",
+	                 "SELECT name, source_bound, resolved FROM ossie_datasets()");
+	RegisterDescribe(loader, TableFunction("ossie_fields", {}, FieldsFunction, FieldsBind, DescribeInit),
+	                 "List every field in the loaded model with its datatype, whether it is a time dimension, "
+	                 "whether it is computed rather than a plain column, its expression, and its synonyms. "
+	                 "This is the dimension vocabulary an agent picks names from.",
+	                 "SELECT dataset, name, datatype, synonyms FROM ossie_fields()");
+	RegisterDescribe(loader, TableFunction("ossie_metrics", {}, MetricsFunction, MetricsBind, DescribeInit),
+	                 "List the loaded model's metrics with their datatype, aggregate expression, description "
+	                 "and synonyms. This is the measure vocabulary an agent picks names from.",
+	                 "SELECT name, description, synonyms FROM ossie_metrics()");
 }
 
 } // namespace ossie

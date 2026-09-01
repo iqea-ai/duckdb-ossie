@@ -5,6 +5,7 @@
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "ossie/compile.hpp"
+#include "ossie/describe_functions.hpp"
 #include "ossie/functions.hpp"
 #include "ossie/state.hpp"
 
@@ -42,7 +43,27 @@ void RegisterQueryFunction(ExtensionLoader &loader) {
 		variant.bind_replace = QueryBindReplace;
 		ossie_query.AddFunction(std::move(variant));
 	}
-	loader.RegisterFunction(std::move(ossie_query));
+	CreateTableFunctionInfo info(std::move(ossie_query));
+	auto describe = [&list](vector<string> params) {
+		vector<LogicalType> types(params.size(), list);
+		return Describe(std::move(params),
+		                "Answer a question against the loaded semantic model: compile the request and "
+		                "execute it. Returns one column per dimension followed by one per metric, "
+		                "grouped by the dimensions. The compiled statement is handed to DuckDB before "
+		                "binding, so join reordering, filter pushdown, and projection pruning come from "
+		                "the optimizer. Refuses rather than guesses where the model underdetermines the "
+		                "query -- metrics at more than one grain, joins that would fan out, or two join "
+		                "paths that could give two different numbers.",
+		                {"SELECT * FROM ossie_query(['total_sales'])",
+		                 "SELECT * FROM ossie_query(['total_sales'], ['item.i_brand'])",
+		                 "SELECT * FROM ossie_query(['total_sales'], ['item.i_brand'], "
+		                 "['date_dim.d_year = 2001'])"},
+		                std::move(types));
+	};
+	info.descriptions.push_back(describe({"metrics"}));
+	info.descriptions.push_back(describe({"metrics", "dimensions"}));
+	info.descriptions.push_back(describe({"metrics", "dimensions", "filters"}));
+	loader.RegisterFunction(std::move(info));
 }
 
 } // namespace ossie

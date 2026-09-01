@@ -3,6 +3,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "ossie/compile.hpp"
+#include "ossie/describe_functions.hpp"
 #include "ossie/functions.hpp"
 #include "ossie/state.hpp"
 
@@ -50,7 +51,16 @@ void RegisterCompileFunction(ExtensionLoader &loader) {
 	auto string_list = LogicalType::LIST(LogicalType::VARCHAR);
 	ScalarFunction ossie_compile("ossie_compile", {string_list, string_list, string_list}, LogicalType::VARCHAR,
 	                             CompileFunction);
-	loader.RegisterFunction(ossie_compile);
+
+	CreateScalarFunctionInfo info(ossie_compile);
+	info.descriptions.push_back(
+	    Describe({"metrics", "dimensions", "filters"},
+	             "Compile a semantic request into SQL and return it as text without executing it. Runs the "
+	             "identical compiler ossie_query does, so the SQL shown here is the SQL that would run. Useful "
+	             "wherever DuckDB is not the executor, and needs no tables to exist.",
+	             {"SELECT ossie_compile(['total_sales'], ['item.i_brand'], [])",
+	              "SELECT ossie_compile(['total_sales'], [], ['date_dim.d_year = 2001'])"}));
+	loader.RegisterFunction(std::move(info));
 }
 
 } // namespace ossie
