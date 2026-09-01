@@ -1,0 +1,41 @@
+duckdb_ossie
+Copyright 2026 iqea.ai
+
+This product is licensed under the MIT License; see LICENSE.
+
+It is an independent implementation of the Apache Ossie file format. It is not affiliated with,
+endorsed by, or an official product of the Apache Software Foundation. "Apache", "Apache Ossie",
+and the Apache feather logo are trademarks of the Apache Software Foundation.
+
+--------------------------------------------------------------------------------
+Third-party content redistributed with this product
+--------------------------------------------------------------------------------
+
+fkYAML
+  Pinned as a git submodule at third_party/fkYAML; source is not copied into this repository.
+  Copyright (c) 2023-2026 Kensuke Fukutani
+  Licensed under the MIT License.
+  https://github.com/fktn-k/fkYAML
+
+Apache Ossie semantic model fixtures
+  The files under test/fixtures/conformance/ are copied verbatim from the Apache Ossie
+  (incubating) repository and are used as test data only. They are not part of the built
+  extension and are not distributed in the released binary.
+
+    test/fixtures/conformance/osi-schema.json        from core-spec/
+    test/fixtures/conformance/tpcds_osi.yaml         from converters/orionbelt/tests/fixtures/
+    test/fixtures/conformance/osi_tpcds.yaml         from converters/gooddata/tests/fixtures/
+    test/fixtures/conformance/fixtureA_osi.yaml      from converters/omni/tests/fixtures/
+    test/fixtures/conformance/fixtureA_ossie.yaml    from converters/databricks/tests/fixtures/
+    test/fixtures/conformance/sales.ossie.yaml       from converters/nvidia/tests/fixtures/
+
+  Copyright The Apache Software Foundation.
+  Licensed under the Apache License, Version 2.0.
+  http://www.apache.org/licenses/LICENSE-2.0
+  https://github.com/apache/ossie
+
+DuckDB
+  Pinned as a git submodule at duckdb/ and used to build this extension.
+  Copyright 2018-2025 Stichting DuckDB Foundation.
+  Licensed under the MIT License.
+  https://github.com/duckdb/duckdb

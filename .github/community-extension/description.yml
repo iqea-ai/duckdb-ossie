@@ -19,20 +19,41 @@ docs:
     INSTALL ossie FROM community;
     LOAD ossie;
 
-    -- Point the model's warehouse-qualified sources at your local catalog.
-    CALL ossie_load('model.yaml', rebind => MAP{'tpcds.public': 'memory.main'});
+    -- A model is a file you supply. This one is written inline so the example runs as pasted;
+    -- normally you would point ossie_load at a .yaml or .json file from your own repository.
+    CREATE TABLE orders(order_id INTEGER, customer_id INTEGER, amount DECIMAL(10,2));
+    CREATE TABLE customers(customer_id INTEGER, country VARCHAR);
+    INSERT INTO orders VALUES (1,1,100.00),(2,1,250.00),(3,2,75.00);
+    INSERT INTO customers VALUES (1,'US'),(2,'DE');
+
+    COPY (SELECT '{
+      "version": "0.2.0.dev0",
+      "semantic_model": [{
+        "name": "sales",
+        "datasets": [
+          {"name": "orders", "source": "memory.main.orders", "fields": [
+            {"name": "customer_id", "expression": {"dialects": [{"dialect": "ANSI_SQL", "expression": "customer_id"}]}},
+            {"name": "amount",      "expression": {"dialects": [{"dialect": "ANSI_SQL", "expression": "amount"}]}}]},
+          {"name": "customers", "source": "memory.main.customers", "primary_key": ["customer_id"], "fields": [
+            {"name": "customer_id", "expression": {"dialects": [{"dialect": "ANSI_SQL", "expression": "customer_id"}]}},
+            {"name": "country",     "expression": {"dialects": [{"dialect": "ANSI_SQL", "expression": "country"}]}}]}],
+        "relationships": [{"name": "orders_to_customers", "from": "orders", "to": "customers",
+                           "from_columns": ["customer_id"], "to_columns": ["customer_id"]}],
+        "metrics": [{"name": "revenue", "expression": {"dialects": [
+                     {"dialect": "ANSI_SQL", "expression": "SUM(orders.amount)"}]}}]}]}'
+    ) TO 'sales_model.json' (FORMAT csv, HEADER false, QUOTE '');
+
+    CALL ossie_load('sales_model.json');
 
     -- Discover the vocabulary. An agent reads these before asking anything.
-    SELECT name, description, synonyms FROM ossie_metrics();
-    SELECT dataset, name, datatype, synonyms FROM ossie_fields();
+    SELECT name, expression FROM ossie_metrics();
+    SELECT dataset, name FROM ossie_fields();
 
     -- Ask a question: metrics, dimensions, filters.
-    SELECT * FROM ossie_query(['total_sales'],
-                              ['item.i_brand'],
-                              ['date_dim.d_year = 2001']);
+    SELECT * FROM ossie_query(['revenue'], ['customers.country']);
 
     -- Or get the SQL without running it, for use where DuckDB is not the executor.
-    SELECT ossie_compile(['total_sales'], ['item.i_brand'], []);
+    SELECT ossie_compile(['revenue'], ['customers.country'], []);
 
   extended_description: |
     Apache Ossie is a vendor-neutral file format for semantic models: datasets bound to physical

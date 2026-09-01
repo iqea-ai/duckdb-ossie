@@ -130,7 +130,9 @@ For the architecture and how to work on the compiler, see
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE), and [NOTICE](NOTICE) for third-party content redistributed with this
+repository — the fkYAML submodule (MIT) and the Apache-2.0 licensed Ossie models used as conformance
+test data.
 
 This project is an independent implementation that reads the Apache Ossie file format. It is not
 affiliated with, endorsed by, or an official product of the Apache Software Foundation. "Apache
