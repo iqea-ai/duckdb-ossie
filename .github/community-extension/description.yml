@@ -12,7 +12,7 @@ extension:
 
 repo:
   github: iqea-ai/duckdb-ossie
-  ref: REPLACE_WITH_FULL_40_CHAR_SHA_OF_THE_v0.1.0_TAG
+  ref: d7783e2ebaac93c09e8f902a52b8e2079ee72754
 
 docs:
   hello_world: |
