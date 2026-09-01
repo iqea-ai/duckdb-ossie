@@ -1,0 +1,174 @@
+{
+  "version": "0.2.0.dev0",
+  "semantic_model": [
+    {
+      "name": "yaml_edge_cases",
+      "description": "shared via a YAML anchor",
+      "ai_context": {
+        "synonyms": [
+          "flow",
+          "style",
+          "quoted, comma"
+        ]
+      },
+      "datasets": [
+        {
+          "name": "t",
+          "source": "tpcds.public.t",
+          "description": "shared via a YAML anchor",
+          "primary_key": [
+            "k"
+          ],
+          "ai_context": {
+            "synonyms": [
+              "tab\there",
+              "newline\nhere",
+              "  padded  ",
+              "1.5",
+              "true",
+              "null"
+            ]
+          },
+          "fields": [
+            {
+              "name": "k",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "k"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "concat",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "a || ' ' || b"
+                  }
+                ]
+              },
+              "description": "pipes and single quotes"
+            },
+            {
+              "name": "hash_lit",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "CASE WHEN a = '#1' THEN 1 ELSE 0 END"
+                  }
+                ]
+              },
+              "description": "a # inside quotes must not become a comment"
+            },
+            {
+              "name": "hash_unquoted",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "k"
+                  }
+                ]
+              },
+              "description": "truncated here"
+            },
+            {
+              "name": "colons",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "CAST(a AS VARCHAR) || ': ' || b"
+                  }
+                ]
+              },
+              "description": "key: value"
+            },
+            {
+              "name": "blocky",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "CASE WHEN k > 1\n     THEN 'big'\n     ELSE 'small' END"
+                  }
+                ]
+              },
+              "description": "literal block scalar keeps newlines"
+            },
+            {
+              "name": "folded",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "k + 1"
+                  }
+                ]
+              },
+              "description": "folded block scalar becomes one line"
+            },
+            {
+              "name": "unicode",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "'héllo → wörld'"
+                  }
+                ]
+              },
+              "description": "héllo → wörld"
+            },
+            {
+              "name": "numeric_desc",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "k"
+                  }
+                ]
+              },
+              "description": "1.5"
+            },
+            {
+              "name": "empty_syn",
+              "expression": {
+                "dialects": [
+                  {
+                    "dialect": "ANSI_SQL",
+                    "expression": "k"
+                  }
+                ]
+              },
+              "ai_context": {
+                "synonyms": []
+              }
+            }
+          ]
+        }
+      ],
+      "relationships": [],
+      "metrics": [
+        {
+          "name": "m",
+          "expression": {
+            "dialects": [
+              {
+                "dialect": "ANSI_SQL",
+                "expression": "COUNT(t.k)"
+              }
+            ]
+          },
+          "description": "counts rows"
+        }
+      ]
+    }
+  ]
+}

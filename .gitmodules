@@ -1,11 +1,15 @@
 # Submodules are pinned to the commits recorded in the tree: there is deliberately no `branch`
 # entry, so `git submodule update` restores exactly these versions and `--remote` has nothing to
 # drift toward. DuckDB's parser/planner internals are not a stable API -- see docs/limitations.md.
-#   duckdb              v1.5.4          08e34c447bae34eaee3723cac61f2878b6bdf787
-#   extension-ci-tools  v1.5-variegata  b777c70d30942cca5bef62d6d4fa23a13362f398
+#   duckdb              v1.5.5          d8cdaa33fda8df955cc76ef58a280f68f4cd43fa
+#   extension-ci-tools  v1.5.5          72e76e99cd7fee45a99739cd118ec2db64e034ec
+#   fkYAML              v0.4.4          1818a25156b9b1a65a9c9b6126631e2cd7cfa8f6
 [submodule "duckdb"]
 	path = duckdb
 	url = https://github.com/duckdb/duckdb
 [submodule "extension-ci-tools"]
 	path = extension-ci-tools
 	url = https://github.com/duckdb/extension-ci-tools
+[submodule "third_party/fkYAML"]
+	path = third_party/fkYAML
+	url = https://github.com/fktn-k/fkYAML

@@ -1,0 +1,138 @@
+# name: test/sql/ossie_yaml.test
+# description: YAML models must read identically to the same model written as JSON
+# group: [sql]
+
+# The YAML reader converts to JSON text and hands that to the ordinary parser, so the whole risk of
+# supporting YAML lives in that conversion. These tests pin it two ways:
+#
+#   1. Differentially. yaml_edge_cases.yaml and yaml_edge_cases.json are the same model in two
+#      serializations, so every row of every introspection function must match exactly. That catches
+#      any value the converter drops, coerces, or mangles, without anyone having to predict which.
+#   2. Explicitly, for the cases where YAML's own rules surprise people -- an unquoted `#` starting a
+#      comment, a bare number not being a string, block scalars folding.
+#
+# The fixtures deliberately carry things a real Ossie model contains and a naive converter breaks on:
+# SQL with `||` and single quotes, a `#` inside a string literal, colons in values, multi-line
+# expressions, and unicode.
+
+require ossie
+
+# ---------------------------------------------------------------- differential
+statement ok
+CALL ossie_load('test/fixtures/yaml_edge_cases.yaml');
+
+statement ok
+CREATE TABLE y_fields AS SELECT * FROM ossie_fields();
+
+statement ok
+CREATE TABLE y_metrics AS SELECT * FROM ossie_metrics();
+
+statement ok
+CREATE TABLE y_datasets AS SELECT * FROM ossie_datasets();
+
+statement ok
+CALL ossie_load('test/fixtures/yaml_edge_cases.json');
+
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM y_fields EXCEPT SELECT * FROM ossie_fields())
+  UNION ALL
+  (SELECT * FROM ossie_fields() EXCEPT SELECT * FROM y_fields));
+----
+0
+
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM y_metrics EXCEPT SELECT * FROM ossie_metrics())
+  UNION ALL
+  (SELECT * FROM ossie_metrics() EXCEPT SELECT * FROM y_metrics));
+----
+0
+
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM y_datasets EXCEPT SELECT * FROM ossie_datasets())
+  UNION ALL
+  (SELECT * FROM ossie_datasets() EXCEPT SELECT * FROM y_datasets));
+----
+0
+
+# ---------------------------------------------------------------- explicit cases
+statement ok
+CALL ossie_load('test/fixtures/yaml_edge_cases.yaml');
+
+# SQL operators and quotes survive a quoted scalar untouched.
+query T
+SELECT expression FROM ossie_fields() WHERE name = 'concat';
+----
+a || ' ' || b
+
+# A `#` inside a quoted scalar is data, not a comment.
+query T
+SELECT expression FROM ossie_fields() WHERE name = 'hash_lit';
+----
+CASE WHEN a = '#1' THEN 1 ELSE 0 END
+
+# ...but an UNQUOTED `#` ends the scalar. Correct YAML, and a real trap when writing a model.
+query T
+SELECT description FROM ossie_fields() WHERE name = 'hash_unquoted';
+----
+truncated here
+
+# A colon inside a quoted scalar does not start a new mapping.
+query T
+SELECT expression FROM ossie_fields() WHERE name = 'colons';
+----
+CAST(a AS VARCHAR) || ': ' || b
+
+# A literal block scalar keeps its newlines, so multi-line SQL round-trips. Newlines are rendered as
+# \n here because sqllogictest reads each line of expected output as a separate row.
+query T
+SELECT replace(expression, chr(10), '\n') FROM ossie_fields() WHERE name = 'blocky';
+----
+CASE WHEN k > 1\n     THEN 'big'\n     ELSE 'small' END
+
+# A folded block scalar collapses to one line.
+query T
+SELECT expression FROM ossie_fields() WHERE name = 'folded';
+----
+k + 1
+
+# Non-ASCII survives the conversion byte for byte.
+query TT
+SELECT expression, description FROM ossie_fields() WHERE name = 'unicode';
+----
+'héllo → wörld'	héllo → wörld
+
+# A bare number where the schema wants a string is rendered as its text rather than silently
+# dropped. `description: 1.5` is a float to YAML, and quoting is what would have made it a string --
+# nothing prompts an author to quote it. This previously read back as the empty string.
+query T
+SELECT description FROM ossie_fields() WHERE name = 'numeric_desc';
+----
+1.5
+
+# An anchor and its alias resolve to the same value.
+query T
+SELECT description FROM ossie_datasets() WHERE name = 't';
+----
+shared via a YAML anchor
+
+# Escapes expand in double-quoted scalars, and quoted padding is preserved.
+query T
+SELECT count(*) FROM (SELECT unnest(synonyms) s FROM ossie_datasets())
+WHERE s IN (chr(9) || 'here', 'tab' || chr(9) || 'here', '  padded  ', '1.5', 'true', 'null');
+----
+5
+
+# An empty sequence is an empty list, not a null.
+query T
+SELECT len(synonyms) FROM ossie_fields() WHERE name = 'empty_syn';
+----
+0
+
+# ---------------------------------------------------------------- malformed input
+statement error
+CALL ossie_load('test/fixtures/invalid/broken.yaml');
+----
+is not valid YAML

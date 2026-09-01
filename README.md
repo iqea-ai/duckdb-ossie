@@ -1,8 +1,14 @@
 # duckdb_ossie
 
-A DuckDB extension that reads [Apache Ossie](https://github.com/apache/ossie) (incubating)
-semantic model files and answers semantic queries against the tables they describe — locally,
-from a single binary, with no infrastructure.
+[![Main Extension Distribution Pipeline](https://github.com/iqea-ai/duckdb-ossie/actions/workflows/MainDistributionPipeline.yml/badge.svg?branch=main)](https://github.com/iqea-ai/duckdb-ossie/actions/workflows/MainDistributionPipeline.yml)
+[![Community Extension](https://img.shields.io/badge/community--extensions-ossie-blue)](https://github.com/duckdb/community-extensions/blob/main/extensions/ossie/description.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+The [Apache Ossie](https://github.com/apache/ossie) (incubating) reference implementation for
+DuckDB. It reads Ossie semantic model files — YAML or JSON — and answers semantic queries against
+the tables they describe, locally, from a single binary, with no infrastructure.
+
+**This extension works with DuckDB v1.5.5.**
 
 Ossie is a vendor-neutral file format for semantic models: `datasets` bound to physical tables,
 `fields`, declared `relationships`, and `metrics` written as aggregate expressions. It describes
@@ -10,8 +16,25 @@ data in place and never transforms it. What the format deliberately leaves open 
 those definitions go into — the joins, the `GROUP BY`, and the grain — because those depend on the
 question being asked, and the file does not know the question.
 
-Every shipped Ossie implementation today is a *converter*, translating definitions into some
-vendor's semantic layer so that vendor's engine can run them. This extension is the missing engine.
+**Every other shipped Ossie implementation is a converter**, translating definitions into some
+vendor's semantic layer so that vendor's engine can run them. This one executes the query itself:
+it plans the joins, derives the grain, and emits SQL that DuckDB runs. It is the first Ossie
+implementation that answers a question rather than translating one.
+
+### Conformance
+
+Claims about a file format should be checkable, so:
+
+- Models are validated against the format's own [`core-spec/osi-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/osi-schema.json)
+- The suite includes five models published by *other* Ossie implementers — Databricks, GoodData,
+  NVIDIA, Omni and OrionBelt — vendored verbatim from `apache/ossie`. Four load and answer queries.
+  The fifth carries only `DATABRICKS` expressions, which this extension does not execute
+- Generated SQL is checked against hand-written TPC-DS SQL at `sf=1` across every metric and every
+  dimension, so correctness is measured against the numbers rather than against our own output
+
+What is not yet supported is listed in [docs/limitations.md](docs/limitations.md): `ANSI_SQL`
+expressions only, one semantic model per file, table-backed sources only, and metrics that span
+more than one grain are refused rather than answered wrongly.
 
 ```sql
 CALL ossie_load('model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
@@ -85,14 +108,15 @@ refused outright, and no argument lets a caller widen that.
 
 ## Building
 
-No vcpkg or third-party dependencies; JSON parsing uses the yyjson DuckDB already vendors.
+No vcpkg and no build-time dependency fetching. JSON parsing uses the yyjson DuckDB already vendors;
+YAML support is a single vendored header ([third_party/fkyaml](third_party/fkyaml), MIT).
 
 ```sh
 git submodule update --init --recursive
 make
 ```
 
-Submodules are pinned by recorded commit (DuckDB `v1.5.4`). DuckDB's parser and planner internals
+Submodules are pinned by recorded commit (DuckDB `v1.5.5`). DuckDB's parser and planner internals
 are not a stable API, so the pin is deliberate and upgrades are expected to need work. The first
 build compiles DuckDB from source and takes a while; later builds are incremental.
 
@@ -106,3 +130,7 @@ For the architecture and how to work on the compiler, see
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+This project is an independent implementation that reads the Apache Ossie file format. It is not
+affiliated with, endorsed by, or an official product of the Apache Software Foundation. "Apache
+Ossie" and "Apache" are trademarks of the Apache Software Foundation.

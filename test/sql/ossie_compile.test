@@ -28,10 +28,19 @@ SELECT ossie_compile(['total_sales'], ['item.i_brand'], []);
 ----
 SELECT item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) GROUP BY item.i_brand
 
+# Join order follows the order the dimensions were requested, and is deliberately deterministic:
+# the set of required datasets used to be a case_insensitive_set_t, whose iteration order is
+# implementation-defined, so this SQL differed between MSVC and libc++. Reversing the request
+# below must reverse the joins -- that is what proves the order is chosen rather than incidental.
 query T
 SELECT ossie_compile(['total_sales'], ['item.i_brand', 'store.s_state'], []);
 ----
-SELECT item.i_brand AS "item.i_brand", store.s_state AS "store.s_state", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) GROUP BY item.i_brand, store.s_state
+SELECT item.i_brand AS "item.i_brand", store.s_state AS "store.s_state", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) GROUP BY item.i_brand, store.s_state
+
+query T
+SELECT ossie_compile(['total_sales'], ['store.s_state', 'item.i_brand'], []);
+----
+SELECT store.s_state AS "store.s_state", item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) GROUP BY store.s_state, item.i_brand
 
 # A computed dimension is inlined into both the projection and the GROUP BY, since
 # customer_full_name does not exist as a column on the table.
@@ -71,11 +80,12 @@ SELECT ossie_compile([], [], []);
 ----
 at least one metric is required
 
-# A filter pulls in the join it needs, even when no dimension uses that dataset.
+# A filter pulls in the join it needs, even when no dimension uses that dataset. Dimensions are
+# joined before filter-only datasets, so item precedes date_dim here.
 query T
 SELECT ossie_compile(['total_sales'], ['item.i_brand'], ['date_dim.d_year = 2001']);
 ----
-SELECT item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.date_dim AS date_dim ON ((store_sales.ss_sold_date_sk = date_dim.d_date_sk)) INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) WHERE (date_dim.d_year = 2001) GROUP BY item.i_brand
+SELECT item.i_brand AS "item.i_brand", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)) INNER JOIN tpcds.main.date_dim AS date_dim ON ((store_sales.ss_sold_date_sk = date_dim.d_date_sk)) WHERE (date_dim.d_year = 2001) GROUP BY item.i_brand
 
 # A filter naming a metric is an aggregate, so it becomes HAVING rather than WHERE.
 query T

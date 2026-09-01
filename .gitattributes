@@ -1,0 +1,14 @@
+# Vendored third-party sources. We neither author nor maintain these.
+#
+# Three attributes, doing three different jobs -- and one thing none of them do:
+#   linguist-vendored   : keeps the file out of GitHub's language statistics
+#   linguist-generated  : collapses the file by default in GitHub's "Files changed" view,
+#                         so a reviewer sees our code instead of scrolling past a parser
+#   -diff               : makes LOCAL `git diff`/`git show` treat it as binary
+#
+# GitHub's additions/deletions counter is computed from the raw diff and honours none of these,
+# so the PR header will still report the vendored line count. That is cosmetic; what matters is
+# that the review view collapses it. Do not chase the header number -- the only way to move it is
+# to not commit the file, and third_party/fkyaml/README.md records why we do.
+# Ossie models copied verbatim from apache/ossie: test data, not our source.
+test/fixtures/conformance/**  linguist-vendored linguist-generated

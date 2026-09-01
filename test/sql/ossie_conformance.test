@@ -1,0 +1,64 @@
+# name: test/sql/ossie_conformance.test
+# description: models written by other Ossie implementers, in their original YAML
+# group: [sql]
+
+# Every other fixture in this repository was written alongside the compiler, so it cannot detect a
+# divergence between our reading of the Ossie format and anyone else's. These files come from
+# apache/ossie unmodified. Which of them load is a number worth watching: see
+# test/fixtures/conformance/README.md for what each rejection means.
+
+require ossie
+
+# --- loads: YAML is read natively, no conversion step -------------------------------------------
+
+query TTIIII
+CALL ossie_load('test/fixtures/conformance/tpcds_osi.yaml');
+----
+tpcds_retail_model	0.1.1	5	31	4	5
+
+query TTIIII
+CALL ossie_load('test/fixtures/conformance/fixtureA_osi.yaml');
+----
+sales	0.2.0.dev0	2	6	1	2
+
+# A YAML model compiles the same as a JSON one -- serialization is converted before parsing, so
+# nothing downstream can tell the difference.
+statement ok
+CALL ossie_load('test/fixtures/conformance/tpcds_osi.yaml', rebind => MAP{'tpcds.public': 'tpcds.main'});
+
+query T
+SELECT ossie_compile(['total_sales'], [], []);
+----
+SELECT sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales
+
+# --- correct refusal: no expression this extension can execute ----------------------------------
+
+statement error
+CALL ossie_load('test/fixtures/conformance/fixtureA_ossie.yaml');
+----
+no expression in a dialect this extension can execute
+
+# --- loads after relaxing the over-strict validation ---------------------------------------------
+# Both of these are valid against the official core-spec schema but were refused because our
+# validation required every column named in a relationship or a field expression to also be
+# declared as a field. The format requires neither.
+
+# gooddata's model: a dimensional model with no measures at all, which is legal.
+query TTIIII
+CALL ossie_load('test/fixtures/conformance/osi_tpcds.yaml');
+----
+tpcds_model	0.2.0.dev0	5	20	4	0
+
+# nvidia's model. It loads, and its one metric is then refused for a real reason: it averages over
+# two datasets, so there is no single grain to aggregate at. Loading a model and answering a query
+# are separate questions, and this is what it looks like when the first succeeds and the second
+# correctly does not.
+query TTIIII
+CALL ossie_load('test/fixtures/conformance/sales.ossie.yaml');
+----
+sales	0.2.0.dev0	2	6	1	1
+
+statement error
+SELECT ossie_compile(['revenue_per_customer'], [], []);
+----
+different grains

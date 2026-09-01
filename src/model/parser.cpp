@@ -2,6 +2,7 @@
 
 #include "ossie/graph.hpp"
 #include "ossie/validate.hpp"
+#include "ossie/yaml.hpp"
 
 #include "duckdb/common/error_data.hpp"
 #include "duckdb/common/exception.hpp"
@@ -9,6 +10,7 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
+#include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/parser/parser.hpp"
 
 #include "yyjson.hpp"
@@ -42,20 +44,72 @@ yyjson_val *Member(yyjson_val *obj, const char *key) {
 	return yyjson_obj_get(obj, key);
 }
 
+//! Renders a scalar as text. Every value the Ossie schema calls a string is read through here.
+//!
+//! Numbers and booleans are accepted rather than rejected because a model can easily arrive with
+//! them by accident, and the author's intent is unambiguous. `version: 1.5` in YAML is a float --
+//! quoting is what makes it a string, and nothing prompts you to quote it. The same is true of
+//! `"version": 1.5` in JSON. Before this, both silently produced an empty string: the value was
+//! neither used nor reported, which is the worst of the three options.
+//!
+//! Null and containers return false; the caller decides whether that is an error or an absent
+//! optional field.
+//!
+//! One caveat: a float's text is normalised by the round trip, so `1.50` reads back as `1.5`. The
+//! original spelling is gone by the time yyjson sees it. Quote the value to preserve it exactly.
+bool ScalarText(yyjson_val *val, string &out) {
+	if (!val) {
+		return false;
+	}
+	if (yyjson_is_str(val)) {
+		out = string(yyjson_get_str(val));
+		return true;
+	}
+	if (yyjson_is_bool(val)) {
+		out = yyjson_get_bool(val) ? "true" : "false";
+		return true;
+	}
+	if (yyjson_is_int(val)) {
+		out = to_string(yyjson_get_sint(val));
+		return true;
+	}
+	if (yyjson_is_uint(val)) {
+		out = to_string(yyjson_get_uint(val));
+		return true;
+	}
+	if (yyjson_is_real(val)) {
+		// %.17g round-trips a double exactly; trim the trailing zeros it can leave behind.
+		auto text = StringUtil::Format("%.17g", yyjson_get_real(val));
+		if (text.find('.') != string::npos && text.find('e') == string::npos && text.find('E') == string::npos) {
+			while (!text.empty() && text.back() == '0') {
+				text.pop_back();
+			}
+			if (!text.empty() && text.back() == '.') {
+				text.pop_back();
+			}
+		}
+		out = text;
+		return true;
+	}
+	return false;
+}
+
 string RequiredString(yyjson_val *obj, const char *key, const string &context) {
 	auto val = Member(obj, key);
-	if (!val || !yyjson_is_str(val)) {
+	string text;
+	if (!val || yyjson_is_null(val)) {
 		throw InvalidInputException("ossie_load: %s is missing required string field '%s'", context, key);
 	}
-	return string(yyjson_get_str(val));
+	if (!ScalarText(val, text)) {
+		throw InvalidInputException("ossie_load: %s field '%s' must be a string, but is a %s", context, key,
+		                            yyjson_is_arr(val) ? "list" : "nested object");
+	}
+	return text;
 }
 
 string OptionalString(yyjson_val *obj, const char *key) {
-	auto val = Member(obj, key);
-	if (!val || !yyjson_is_str(val)) {
-		return string();
-	}
-	return string(yyjson_get_str(val));
+	string text;
+	return ScalarText(Member(obj, key), text) ? text : string();
 }
 
 vector<string> StringArray(yyjson_val *obj, const char *key, const string &context) {
@@ -70,10 +124,11 @@ vector<string> StringArray(yyjson_val *obj, const char *key, const string &conte
 	size_t idx, max;
 	yyjson_val *item;
 	yyjson_arr_foreach(arr, idx, max, item) {
-		if (!yyjson_is_str(item)) {
+		string text;
+		if (!ScalarText(item, text)) {
 			throw InvalidInputException("ossie_load: %s field '%s' must contain only strings", context, key);
 		}
-		result.emplace_back(yyjson_get_str(item));
+		result.emplace_back(std::move(text));
 	}
 	return result;
 }
@@ -220,6 +275,74 @@ void ValidateSourceShape(const string &source, const string &context) {
 	}
 }
 
+//! A field expression may name another field of the same dataset. Expand those references at load
+//! so that by the time the compiler substitutes a field, its tree contains only physical columns.
+//!
+//! This has to happen here rather than in the compiler. The compiler substitutes a field and then
+//! qualifies the result, which rewrites every column reference into a two-part name -- at which
+//! point a model-level field name and a physical column name are the same object, and there is no
+//! way left to tell whether more expansion is needed. Expanding once at load also turns a reference
+//! cycle into an ossie_load error instead of unbounded recursion at query time.
+enum class ExpandState : uint8_t { PENDING, ACTIVE, DONE };
+
+void ExpandField(Dataset &dataset, idx_t index, vector<ExpandState> &state, vector<string> &stack,
+                 const string &context);
+
+//! Replaces references to *other computed* fields with their (already expanded) expressions.
+//! Three cases are deliberately left alone, because in each the reference already names a physical
+//! column: a name that is not a declared field at all, a non-computed field (whose name IS its
+//! column), and a field referring to itself -- `revenue` defined as `revenue * 2` means the column
+//! times two, not a cycle.
+void SubstituteFieldRefs(Dataset &dataset, unique_ptr<ParsedExpression> &expr, idx_t self, vector<ExpandState> &state,
+                         vector<string> &stack, const string &context) {
+	if (expr->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+		auto &colref = expr->Cast<ColumnRefExpression>();
+		auto entry = dataset.field_index.find(colref.column_names.back());
+		if (entry == dataset.field_index.end()) {
+			return;
+		}
+		auto referenced = entry->second;
+		if (referenced == self || !dataset.fields[referenced].is_computed) {
+			return;
+		}
+		ExpandField(dataset, referenced, state, stack, context);
+		expr = dataset.fields[referenced].expression.tree->Copy();
+		return;
+	}
+	ParsedExpressionIterator::EnumerateChildren(*expr, [&](unique_ptr<ParsedExpression> &child) {
+		SubstituteFieldRefs(dataset, child, self, state, stack, context);
+	});
+}
+
+void ExpandField(Dataset &dataset, idx_t index, vector<ExpandState> &state, vector<string> &stack,
+                 const string &context) {
+	if (state[index] == ExpandState::DONE) {
+		return;
+	}
+	if (state[index] == ExpandState::ACTIVE) {
+		auto cycle = stack;
+		cycle.push_back(dataset.fields[index].name);
+		throw InvalidInputException("ossie_load: %s has a cycle in its field definitions: %s. A field may "
+		                            "not be defined, directly or indirectly, in terms of itself",
+		                            context, StringUtil::Join(cycle, " -> "));
+	}
+	state[index] = ExpandState::ACTIVE;
+	stack.push_back(dataset.fields[index].name);
+	if (dataset.fields[index].expression.tree) {
+		SubstituteFieldRefs(dataset, dataset.fields[index].expression.tree, index, state, stack, context);
+	}
+	stack.pop_back();
+	state[index] = ExpandState::DONE;
+}
+
+void ExpandFieldReferences(Dataset &dataset, const string &context) {
+	vector<ExpandState> state(dataset.fields.size(), ExpandState::PENDING);
+	vector<string> stack;
+	for (idx_t i = 0; i < dataset.fields.size(); i++) {
+		ExpandField(dataset, i, state, stack, context);
+	}
+}
+
 Dataset ParseDataset(yyjson_val *dataset_obj, const RebindMap &rebind) {
 	Dataset result;
 	result.name = RequiredString(dataset_obj, "name", "dataset");
@@ -250,6 +373,8 @@ Dataset ParseDataset(yyjson_val *dataset_obj, const RebindMap &rebind) {
 			result.fields.push_back(std::move(field));
 		}
 	}
+	// Only safe once every field is present, since expansion resolves references between them.
+	ExpandFieldReferences(result, context);
 	return result;
 }
 
@@ -403,6 +528,14 @@ Model LoadModel(ClientContext &context, const string &path, const RebindMap &reb
 	auto file_size = handle->GetFileSize();
 	string contents(file_size, '\0');
 	handle->Read(reinterpret_cast<void *>(&contents[0]), file_size);
+
+	// The Ossie ecosystem publishes models as YAML. Converting to JSON here, rather than teaching
+	// the parser a second syntax, keeps every validation guard and the whole compiler unaware of
+	// how the file was serialized. Sniffing the content rather than the extension means a .txt or
+	// extensionless model still works, and JSON stays the fast path.
+	if (LooksLikeYaml(contents)) {
+		contents = YamlToJson(contents, StringUtil::Format("\"%s\"", path));
+	}
 	return ParseModel(contents, rebind);
 }
 

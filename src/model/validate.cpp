@@ -22,13 +22,17 @@ string Render(const ColumnRefExpression &colref) {
 	return StringUtil::Join(colref.column_names, ".");
 }
 
-void RequireField(const Dataset &dataset, const string &column, const string &context) {
-	if (!dataset.FindField(column)) {
-		throw InvalidInputException("ossie_load: %s references column \"%s\", which dataset \"%s\" does not "
-		                            "declare as a field",
-		                            context, column, dataset.name);
-	}
-}
+// Deliberately no RequireField() any more. The Ossie schema requires neither that a relationship's
+// columns be declared fields (`fields` is not even a required property of a dataset) nor that a
+// field or metric expression reference only declared fields, and real third-party models rely on
+// both -- see test/fixtures/conformance/. An undeclared name is a physical column; it is qualified
+// to the bound alias and resolved by DuckDB's binder, which names the column and table if it is
+// genuinely wrong.
+//
+// This is a narrower notion of strictness than it looks. Refusing a query the model underdetermines
+// (two grains, an ambiguous path, a fan-out) prevents a wrong number. Refusing a spec-legal model
+// at load prevents nothing and cannot be worked around. Note that keys were already treated this
+// way, because the reference model keys store_sales on a column it never exposes.
 
 // Key columns are deliberately not checked against declared fields. Keys only ever participate in the
 // cardinality comparison, never in emitted SQL, so an undeclared one is harmless.
@@ -49,7 +53,6 @@ void ValidateFieldExpression(const Dataset &dataset, const Field &field) {
 			                            "reference its own dataset \"%s\" -- crossing datasets would require a join",
 			                            context, Render(colref), dataset.name);
 		}
-		RequireField(dataset, names.back(), context);
 	});
 }
 
@@ -62,34 +65,25 @@ void ValidateMetricExpression(const Model &model, const Metric &metric) {
 			                            "as dataset.field so its grain is unambiguous",
 			                            context, Render(colref));
 		}
-		auto dataset = model.FindDataset(names[0]);
-		if (!dataset) {
+		if (!model.FindDataset(names[0])) {
 			throw InvalidInputException("ossie_load: %s references dataset \"%s\", which the model does not declare",
 			                            context, names[0]);
 		}
-		RequireField(*dataset, names[1], context);
 	});
 }
 
 void ValidateRelationship(const Model &model, const Relationship &relationship) {
 	auto context = StringUtil::Format("relationship \"%s\"", relationship.name);
-	auto from = model.FindDataset(relationship.from_dataset);
-	if (!from) {
+	if (!model.FindDataset(relationship.from_dataset)) {
 		throw InvalidInputException("ossie_load: %s has 'from' dataset \"%s\", which the model does not declare",
 		                            context, relationship.from_dataset);
 	}
-	auto to = model.FindDataset(relationship.to_dataset);
-	if (!to) {
+	if (!model.FindDataset(relationship.to_dataset)) {
 		throw InvalidInputException("ossie_load: %s has 'to' dataset \"%s\", which the model does not declare", context,
 		                            relationship.to_dataset);
 	}
-	// Unlike keys, these columns are emitted into the ON clause, so they must be declared.
-	for (auto &column : relationship.from_columns) {
-		RequireField(*from, column, context + " 'from_columns'");
-	}
-	for (auto &column : relationship.to_columns) {
-		RequireField(*to, column, context + " 'to_columns'");
-	}
+	// The columns are emitted into the ON clause verbatim, so they need no field declaration; the
+	// endpoints resolving (above) is what matters. Widths are checked in the parser.
 }
 
 } // namespace

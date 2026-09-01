@@ -1,0 +1,71 @@
+# name: test/sql/ossie_field_expansion.test
+# description: field expressions are expanded to physical columns at load
+# group: [sql]
+
+# A field may be defined over another computed field. Before expansion happened at load, the
+# compiler substituted only one level, leaving a model-level field name in the emitted SQL as
+# though it were a column. Where the table happened to have a column of that name, the query
+# silently grouped by the wrong data instead of failing -- the one outcome this project treats as
+# worse than an error.
+
+require ossie
+
+statement ok
+CALL ossie_load('test/fixtures/nested_field_model.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+# One level of indirection: mid -> label
+query T
+SELECT ossie_compile(['total'], ['dim.mid'], []);
+----
+SELECT (dim."label" || 'M') AS "dim.mid", sum(sales.amt) AS total FROM memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k)) GROUP BY (dim."label" || 'M')
+
+# Two levels: outer_f -> mid -> label. The emitted SQL must contain no reference to "mid".
+query T
+SELECT ossie_compile(['total'], ['dim.outer_f'], []);
+----
+SELECT ((dim."label" || 'M') || 'O') AS "dim.outer_f", sum(sales.amt) AS total FROM memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k)) GROUP BY ((dim."label" || 'M') || 'O')
+
+# Three levels, to show the recursion is not depth-limited.
+query T
+SELECT ossie_compile(['total'], ['dim.deep'], []);
+----
+SELECT (((dim."label" || 'M') || 'O') || 'D') AS "dim.deep", sum(sales.amt) AS total FROM memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k)) GROUP BY (((dim."label" || 'M') || 'O') || 'D')
+
+# The regression itself: a physical column named after a model field must not shadow it.
+statement ok
+CREATE TABLE sales(k INTEGER, amt DECIMAL(10,2));
+
+statement ok
+CREATE TABLE dim(k INTEGER, label VARCHAR, mid VARCHAR, outer_f VARCHAR);
+
+statement ok
+INSERT INTO sales VALUES (1, 10.00);
+
+statement ok
+INSERT INTO dim VALUES (1, 'REAL', 'DECOY', 'ALSO_DECOY');
+
+statement ok
+CALL ossie_load('test/fixtures/nested_field_model.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+# outer_f is (label||'M')||'O' = REALMO. The decoy columns must be ignored entirely.
+query TT
+SELECT * FROM ossie_query(['total'], ['dim.outer_f']);
+----
+REALMO	10.00
+
+query TT
+SELECT * FROM ossie_query(['total'], ['dim.mid']);
+----
+REALM	10.00
+
+# A field naming itself means the physical column, not a cycle: self_ref is label || label.
+query TT
+SELECT * FROM ossie_query(['total'], ['dim.self_ref']);
+----
+REALREAL	10.00
+
+# A genuine mutual cycle is refused at load, naming the path, rather than recursing at query time.
+statement error
+CALL ossie_load('test/fixtures/invalid/field_cycle.json');
+----
+has a cycle in its field definitions: a -> b -> a

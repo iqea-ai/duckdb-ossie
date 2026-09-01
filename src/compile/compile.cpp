@@ -15,6 +15,8 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "ossie/catalog.hpp"
 
+#include <algorithm>
+
 namespace duckdb {
 namespace ossie {
 
@@ -44,7 +46,18 @@ void InlineFields(const Model &model, unique_ptr<ParsedExpression> &expr) {
 		auto &colref = expr->Cast<ColumnRefExpression>();
 		if (colref.column_names.size() == 2) {
 			auto dataset = model.FindDataset(colref.column_names[0]);
+			if (!dataset) {
+				// Not a model dataset -- already a physical reference, leave it alone.
+				return;
+			}
 			auto field = dataset->FindField(colref.column_names[1]);
+			if (!field) {
+				// The Ossie schema does not require that every column a model expression names be
+				// declared as a field, and real models rely on that. Such a name is a physical
+				// column: qualify it to the bound alias and let DuckDB's binder resolve it.
+				expr = make_uniq<ColumnRefExpression>(colref.column_names[1], AliasFor(*dataset));
+				return;
+			}
 			auto replacement = field->expression.tree->Copy();
 			QualifyColumns(replacement, AliasFor(*dataset));
 			expr = std::move(replacement);
@@ -64,6 +77,33 @@ void CollectDatasets(const ParsedExpression &expr, case_insensitive_set_t &datas
 	}
 	ParsedExpressionIterator::EnumerateChildren(
 	    expr, [&](const ParsedExpression &child) { CollectDatasets(child, datasets); });
+}
+
+//! case_insensitive_set_t is an unordered_set, so its iteration order is implementation-defined and
+//! differs between standard libraries. Anything that reaches emitted SQL or an error message has to
+//! be ordered explicitly, or the same model and request produce different output on different
+//! platforms -- which is exactly how this was found: golden SQL and a refusal message both differed
+//! on MSVC while passing on libc++.
+vector<string> SortedNames(const case_insensitive_set_t &names) {
+	vector<string> result(names.begin(), names.end());
+	// Compare case-insensitively so ordering matches how names are looked up, with the raw string as
+	// a tiebreak so the result is a total order even if two names differ only in case.
+	std::sort(result.begin(), result.end(), [](const string &a, const string &b) {
+		auto la = StringUtil::Lower(a);
+		auto lb = StringUtil::Lower(b);
+		return la != lb ? la < lb : a < b;
+	});
+	return result;
+}
+
+//! Appends `name` unless it is the root or already present. Keeps insertion order, which is what
+//! makes the emitted join order stable and intuitive: metric datasets, then dimensions in the order
+//! requested, then filters.
+void AddRequired(vector<string> &required, case_insensitive_set_t &seen, const string &name, const string &root) {
+	if (StringUtil::CIEquals(name, root) || !seen.insert(name).second) {
+		return;
+	}
+	required.push_back(name);
 }
 
 vector<string> MetricNames(const Model &model) {
@@ -237,7 +277,7 @@ string AggregateGrain(const Model &model, const case_insensitive_set_t &datasets
 		}
 	}
 	if (candidates.size() != 1) {
-		vector<string> names(datasets.begin(), datasets.end());
+		auto names = SortedNames(datasets);
 		throw InvalidInputException("ossie: an aggregate in metric \"%s\" spans datasets %s, and none of them "
 		                            "is the grain the others hang off, so there is no single set of rows to aggregate",
 		                            metric_name, StringUtil::Join(names, ", "));
@@ -357,7 +397,8 @@ struct PlannedJoin {
 
 //! Executes BFS through the relationship graph outward from the metric's dataset, returning the joins needed to
 //! reach every required dataset. Refuses ambiguous joins (when multiple routes to join two datasets exist).
-vector<PlannedJoin> PlanJoins(const Model &model, const Dataset &root, const case_insensitive_set_t &required) {
+vector<PlannedJoin> PlanJoins(const Model &model, const Dataset &root, const vector<string> &required) {
+	case_insensitive_set_t required_lookup(required.begin(), required.end());
 	case_insensitive_map_t<const Relationship *> parent_edge;
 	case_insensitive_map_t<string> parent;
 	case_insensitive_set_t visited {root.name};
@@ -388,7 +429,7 @@ vector<PlannedJoin> PlanJoins(const Model &model, const Dataset &root, const cas
 			auto came_by = parent_edge.find(current);
 			bool is_tree_edge = (reached_by != parent_edge.end() && reached_by->second == &relationship) ||
 			                    (came_by != parent_edge.end() && came_by->second == &relationship);
-			if (!is_tree_edge && required.find(other) != required.end()) {
+			if (!is_tree_edge && required_lookup.find(other) != required_lookup.end()) {
 				throw InvalidInputException("ossie: more than one join path connects \"%s\" to \"%s\"; "
 				                            "the model must disambiguate before this can be answered",
 				                            root.name, other);
@@ -472,7 +513,7 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 
 	// One query has one set of rows to group, so every aggregate must sit at the same grain.
 	if (grains.size() > 1) {
-		vector<string> names(grains.begin(), grains.end());
+		auto names = SortedNames(grains);
 		throw InvalidInputException("ossie: these metrics aggregate at %s different grains (%s). Computing "
 		                            "them together needs one aggregate per grain, which is not supported yet",
 		                            to_string(grains.size()), StringUtil::Join(names, ", "));
@@ -492,17 +533,14 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 	auto &root = *model.FindDataset(*grains.begin());
 
 	// A metric may reference a second dataset as a scalar, which still has to be joined.
-	case_insensitive_set_t required;
-	for (auto &name : metric_datasets) {
-		if (!StringUtil::CIEquals(name, root.name)) {
-			required.insert(name);
-		}
+	vector<string> required;
+	case_insensitive_set_t required_seen;
+	for (auto &name : SortedNames(metric_datasets)) {
+		AddRequired(required, required_seen, name, root.name);
 	}
 	for (auto &request : dimensions) {
 		auto dimension = ResolveDimension(model, request);
-		if (!StringUtil::CIEquals(dimension.dataset->name, root.name)) {
-			required.insert(dimension.dataset->name);
-		}
+		AddRequired(required, required_seen, dimension.dataset->name, root.name);
 		auto index = select->select_list.size();
 		dimension.expr->SetAlias(dimension.alias);
 		select->select_list.push_back(std::move(dimension.expr));
@@ -525,10 +563,8 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 		auto filter = ResolveFilter(model, request, options);
 		case_insensitive_set_t referenced;
 		CollectDatasets(*filter.expr, referenced);
-		for (auto &name : referenced) {
-			if (!StringUtil::CIEquals(name, root.name)) {
-				required.insert(name);
-			}
+		for (auto &name : SortedNames(referenced)) {
+			AddRequired(required, required_seen, name, root.name);
 		}
 
 		auto &target = filter.is_aggregate ? select->having : select->where_clause;
