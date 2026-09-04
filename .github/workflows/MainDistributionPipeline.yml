@@ -23,6 +23,29 @@ jobs:
       ci_tools_version: v1.5.5
       extension_name: ossie
 
+  mcp-round-trip:
+    name: MCP round trip
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The check drives examples/server.sql, which installs ossie and duckdb_mcp from the community
+      # registry, so it needs a stock CLI and network rather than this repo's build tree. Using the
+      # build tree would defeat the purpose: static linking there is exactly what hid the bug this
+      # job exists to catch, where server.sql never loaded the extension it demonstrates and failed
+      # for everyone installing from the registry.
+      - name: Install the DuckDB CLI
+        run: |
+          curl -fsSL https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Speak MCP to the published server
+        run: python3 scripts/mcp_check.py
+
   code-quality-check:
     name: Code Quality Check
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5.5

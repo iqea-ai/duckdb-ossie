@@ -5,8 +5,19 @@
 --   {"mcpServers": {"ossie": {"command": "duckdb",
 --                             "args": ["-unsigned", "-init", "/abs/path/to/server.sql"]}}}
 
+-- Every extension this script uses must be loaded explicitly. Running it from a build tree hides
+-- that, because ossie and tpcds are statically linked there; a user installing from the registry
+-- gets neither unless it is spelled out.
+INSTALL ossie FROM community;
+LOAD ossie;
+
 INSTALL duckdb_mcp FROM community;
 LOAD duckdb_mcp;
+
+-- tpcds only supplies dsdgen, for the demo data below. Drop both lines when pointing this at
+-- your own tables.
+INSTALL tpcds;
+LOAD tpcds;
 
 -- Replace with your own data. dsdgen gives a runnable demo out of the box.
 CALL dsdgen(sf = 0.01);
@@ -34,4 +45,9 @@ PRAGMA mcp_publish_tool(
     'markdown'
 );
 
+-- SECURITY: duckdb_mcp also publishes generic tools -- query, export, list_tables, describe --
+-- and offers no way to disable them, so an agent on this connection can run arbitrary SQL against
+-- this database, not just semantic_query. Start this server only against a database holding data
+-- you are willing to expose. The ossie-side guarantees (allowlisted filters, no subqueries) apply
+-- to semantic_query, not to the connection.
 PRAGMA mcp_server_start('stdio');

@@ -104,8 +104,16 @@ Point Claude Desktop at it:
 ```
 
 The agent gets a `semantic_query` tool plus `metrics` and `dimensions` resources to discover names
-from. It can reach nothing but the model's own vocabulary: filters are allowlisted, subqueries are
-refused outright, and no argument lets a caller widen that.
+from. Within that tool it can reach nothing but the model's own vocabulary: filters are allowlisted,
+subqueries are refused outright, and no argument lets a caller widen that.
+
+> **Read this before pointing an agent at real data.** `duckdb_mcp` also publishes its own generic
+> tools — `query`, `export`, `list_tables`, `describe` — and there is currently no option to turn
+> them off. An agent connected to this server can therefore run arbitrary SQL and read any table in
+> the database, including tables the semantic model never declares. The guarantees above apply to
+> `semantic_query`, not to the connection as a whole. Until that is configurable, treat the server as
+> having full access to whatever database it is started against, and point it only at data you are
+> willing to expose.
 
 ## Building
 
