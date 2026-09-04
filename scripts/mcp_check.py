@@ -14,12 +14,20 @@ alongside ours, which falsified a security claim in the README.
 Usage:  python3 scripts/mcp_check.py        (run from the repository root)
 Exit:   0 all checks passed, 1 otherwise
 """
-import json, subprocess, sys, time
+import json, shutil, subprocess, sys, time
 
-proc = subprocess.Popen(
-    ["duckdb", "-unsigned", "-init", "examples/server.sql"],
-    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    text=True, bufsize=1)
+if shutil.which("duckdb") is None:
+    print("duckdb is not on PATH. Install the CLI, or run this from an environment that has it.")
+    sys.exit(2)
+
+try:
+    proc = subprocess.Popen(
+        ["duckdb", "-unsigned", "-init", "examples/server.sql"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, bufsize=1)
+except OSError as exc:
+    print(f"could not start the MCP server: {exc}")
+    sys.exit(2)
 
 def send(obj):
     proc.stdin.write(json.dumps(obj) + "\n"); proc.stdin.flush()
@@ -67,8 +75,12 @@ send({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{
     "arguments":{"metrics":"total_sales","dimensions":"item.i_brand"}}})
 r = read()
 body = json.dumps((r or {}).get("result", {}))
-check("semantic_query returns real rows", "amalg" in body.lower() or "brand" in body.lower(),
-      body[:110])
+# Assert on the column names we asked for and on there being a data row beneath the header.
+# Asserting on brand names would couple this to whatever dsdgen happens to generate.
+returned_columns = "item.i_brand" in body and "total_sales" in body
+has_data_row = body.count("|") > 6
+check("semantic_query returns rows for the requested columns",
+      returned_columns and has_data_row, body[:110])
 
 send({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{
     "name":"semantic_query",
@@ -78,4 +90,10 @@ body = json.dumps((r or {}).get("result", {})) + json.dumps((r or {}).get("error
 check("a refusal reaches the agent as a message", "grain" in body.lower(), body[:110])
 
 proc.terminate()
+try:
+    proc.wait(timeout=10)
+except subprocess.TimeoutExpired:
+    proc.kill()
+
+print(f"\n{'all MCP checks passed' if ok else 'MCP checks FAILED'}")
 sys.exit(0 if ok else 1)

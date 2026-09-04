@@ -38,6 +38,9 @@ does. Neither the test suite nor the end-to-end functionality check covered that
 - `scripts/mcp_check.py`, an end-to-end MCP check that speaks JSON-RPC over stdio to the published
   server and asserts the full round trip: handshake, tool discovery, vocabulary discovery, real rows
   from `semantic_query`, and a multi-grain refusal arriving as a readable error
+- A `MCP round trip` CI job that runs it on every push. It deliberately uses a stock DuckDB CLI
+  rather than the build tree, because static linking in the build tree is what hid the bug above:
+  CI was green on a `server.sql` that failed for everyone installing from the registry
 
 ## [0.1.0] - 2026-08-27
 
