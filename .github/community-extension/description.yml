@@ -3,7 +3,7 @@ extension:
   description: The Apache Ossie (incubating) reference implementation for DuckDB. Reads Ossie
     semantic model files in YAML or JSON and answers semantic queries against the tables in DuckDB,
     from a single binary, with no infrastructure. Also exposes the semantic layer via MCP.
-  version: 0.1.0
+  version: 0.1.1
   language: C++
   build: cmake
   license: MIT
@@ -106,8 +106,14 @@ docs:
 
     `examples/server.sql` publishes a model over MCP via the duckdb_mcp community extension, giving
     an agent a `semantic_query` tool plus `metrics` and `dimensions` resources to discover names
-    from. The agent can reach nothing but the model's own vocabulary: filters are allowlisted,
-    subqueries are refused outright, and no argument lets a caller widen that.
+    from. Within that tool the agent reaches nothing but the model's own vocabulary: filters are
+    allowlisted, subqueries are refused outright, and no argument lets a caller widen that.
+
+    Note that duckdb_mcp also publishes its own generic tools -- query, export, list_tables,
+    describe -- and currently offers no way to disable them, so an agent on that connection can run
+    arbitrary SQL against the database it was started against. The guarantees above apply to
+    semantic_query, not to the connection as a whole. Point the server only at data you are willing
+    to expose.
 
     This is an independent implementation of the Apache Ossie file format. It is not affiliated
     with, endorsed by, or an official product of the Apache Software Foundation.
