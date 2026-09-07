@@ -1,9 +1,9 @@
 -- Publish an Ossie semantic model to AI agents over MCP.
---   duckdb -unsigned -init examples/server.sql
+--   duckdb -init examples/server.sql
 --
 -- Point Claude Desktop at it with:
 --   {"mcpServers": {"ossie": {"command": "duckdb",
---                             "args": ["-unsigned", "-init", "/abs/path/to/server.sql"]}}}
+--                             "args": ["-init", "/abs/path/to/server.sql"]}}}
 
 -- Every extension this script uses must be loaded explicitly. Running it from a build tree hides
 -- that, because ossie and tpcds are statically linked there; a user installing from the registry

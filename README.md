@@ -93,14 +93,14 @@ the SQL that would run.
 [examples/server.sql](examples/server.sql) publishes the model over MCP:
 
 ```sh
-duckdb -unsigned -init examples/server.sql
+duckdb -init examples/server.sql
 ```
 
 Point Claude Desktop at it:
 
 ```json
 {"mcpServers": {"ossie": {"command": "duckdb",
-                          "args": ["-unsigned", "-init", "/abs/path/to/server.sql"]}}}
+                          "args": ["-init", "/abs/path/to/server.sql"]}}}
 ```
 
 The agent gets a `semantic_query` tool plus `metrics` and `dimensions` resources to discover names

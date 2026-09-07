@@ -1,6 +1,6 @@
 """End-to-end check of the MCP surface.
 
-Speaks JSON-RPC over stdio to `duckdb -unsigned -init examples/server.sql`, exactly as Claude Desktop
+Speaks JSON-RPC over stdio to `duckdb -init examples/server.sql`, exactly as Claude Desktop
 does, and asserts an agent can complete a round trip: handshake, discover the tool, discover the
 vocabulary, get real rows back, and receive a refusal as a readable error.
 
@@ -22,7 +22,7 @@ if shutil.which("duckdb") is None:
 
 try:
     proc = subprocess.Popen(
-        ["duckdb", "-unsigned", "-init", "examples/server.sql"],
+        ["duckdb", "-init", "examples/server.sql"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, bufsize=1)
 except OSError as exc:
