@@ -109,11 +109,11 @@ docs:
     from. Within that tool the agent reaches nothing but the model's own vocabulary: filters are
     allowlisted, subqueries are refused outright, and no argument lets a caller widen that.
 
-    Note that duckdb_mcp also publishes its own generic tools -- query, export, list_tables,
-    describe -- and currently offers no way to disable them, so an agent on that connection can run
-    arbitrary SQL against the database it was started against. The guarantees above apply to
-    semantic_query, not to the connection as a whole. Point the server only at data you are willing
-    to expose.
+    That holds for the connection, not just the tool: server.sql disables every built-in duckdb_mcp
+    tool -- query, export, list_tables, describe, database_info -- so tools/list returns only
+    semantic_query and calling anything else is refused. Disabling query alone would not be enough,
+    because export takes an arbitrary SQL argument and reaches the same data. A CI job asserts both
+    directions of this on every push.
 
     This is an independent implementation of the Apache Ossie file format. It is not affiliated
     with, endorsed by, or an official product of the Apache Software Foundation.

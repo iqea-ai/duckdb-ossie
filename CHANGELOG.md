@@ -26,13 +26,21 @@ does. Neither the test suite nor the end-to-end functionality check covered that
   mattered. All three extensions are now installed and loaded explicitly
 
 ### Changed
-- Corrected a security claim. The documentation stated that an agent connected to the MCP server
-  "can reach nothing but the model's own vocabulary". `duckdb_mcp` also publishes generic `query`,
-  `export`, `list_tables` and `describe` tools and currently offers no way to disable them, so an
-  agent can run arbitrary SQL against the database the server was started against — verified by
-  reading a table the semantic model never declares. The allowlisted-filter and no-subquery
-  guarantees are real but apply to `semantic_query`, not to the connection. README, the registry
-  descriptor, and `examples/server.sql` now say so
+- Closed a hole behind a security claim. The documentation stated that an agent connected to the MCP
+  server "can reach nothing but the model's own vocabulary", which was false: `duckdb_mcp` also
+  publishes generic `query`, `export`, `list_tables`, `describe` and `database_info` tools, and
+  reading a table the semantic model never declares confirmed an agent could reach it.
+  `examples/server.sql` now disables all five when starting the server, so `tools/list` returns only
+  `semantic_query` and calling anything else is refused. Disabling `query` alone would not have been
+  enough — `export` takes an arbitrary SQL argument and reaches the same data. The claim is now true
+  and, more importantly, asserted by CI rather than written down. Reported upstream as
+  teaguesterling/duckdb_mcp#75; the flags existed but were absent from that project's tool table
+- Dropped `-unsigned` from the documented MCP invocation and the Claude Desktop config snippet. It
+  was left over from before `ossie` was in the registry, when the example could only run against a
+  locally built artifact. Community extensions are signed, so the flag did nothing but disable
+  signature verification for the whole session — including every session started by that pasted
+  config. `scripts/full_functionality_check.sh` keeps it, because it loads the local build
+  deliberately
 
 ### Added
 - `scripts/mcp_check.py`, an end-to-end MCP check that speaks JSON-RPC over stdio to the published
@@ -41,6 +49,8 @@ does. Neither the test suite nor the end-to-end functionality check covered that
 - A `MCP round trip` CI job that runs it on every push. It deliberately uses a stock DuckDB CLI
   rather than the build tree, because static linking in the build tree is what hid the bug above:
   CI was green on a `server.sql` that failed for everyone installing from the registry
+- A `CI gate` job aggregating the build matrix, the MCP round trip and the quality checks into one
+  stable check name, so branch protection can require it without depending on matrix job names
 
 ## [0.1.0] - 2026-08-27
 

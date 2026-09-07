@@ -14,7 +14,7 @@ alongside ours, which falsified a security claim in the README.
 Usage:  python3 scripts/mcp_check.py        (run from the repository root)
 Exit:   0 all checks passed, 1 otherwise
 """
-import json, shutil, subprocess, sys, time
+import json, os, shutil, subprocess, sys, tempfile, time
 
 if shutil.which("duckdb") is None:
     print("duckdb is not on PATH. Install the CLI, or run this from an environment that has it.")
@@ -63,7 +63,19 @@ send({"jsonrpc":"2.0","method":"notifications/initialized"})
 send({"jsonrpc":"2.0","id":2,"method":"tools/list"})
 r = read()
 tools = [t["name"] for t in (r or {}).get("result",{}).get("tools",[])]
-check("tools/list exposes semantic_query", "semantic_query" in tools, str(tools))
+# Exclusivity, not membership. "semantic_query in tools" was the original assertion and it passed
+# throughout v0.1.0 while query/export were also exposed -- it cannot fail when the hole is open.
+check("tools/list exposes semantic_query AND NOTHING ELSE", tools == ["semantic_query"], str(tools))
+
+# Absence from the listing is not the same as refusal on call. Assert the gate, not the menu.
+# export is checked as well as query because it takes an arbitrary SQL argument: disabling query
+# alone leaves a second route to the same data (teaguesterling/duckdb_mcp#75).
+for builtin in ("query", "export"):
+    send({"jsonrpc":"2.0","id":20,"method":"tools/call",
+          "params":{"name":builtin,"arguments":{"sql":"SELECT 1"}}})
+    r = read()
+    err = json.dumps((r or {}).get("error", {}))
+    check(f"tools/call {builtin} is refused", "Tool not found" in err, err[:90])
 
 send({"jsonrpc":"2.0","id":3,"method":"resources/list"})
 r = read()
@@ -94,6 +106,42 @@ try:
     proc.wait(timeout=10)
 except subprocess.TimeoutExpired:
     proc.kill()
+
+# ---------------------------------------------------------------------------------------------
+# Control: the same server WITHOUT the disabling flags must still expose the built-ins.
+#
+# Without this, every assertion above also passes if duckdb_mcp simply stopped publishing built-in
+# tools for some unrelated reason -- we would be green because the threat disappeared, not because
+# server.sql closed it, and would never learn our flags had stopped being read. Assert both
+# directions. No dsdgen here, so this costs about a second.
+control_sql = """
+INSTALL duckdb_mcp FROM community; LOAD duckdb_mcp;
+PRAGMA mcp_publish_tool('probe_tool','control','SELECT 1 AS x','{}','[]','markdown');
+PRAGMA mcp_server_start('stdio');
+"""
+fd, control_path = tempfile.mkstemp(suffix=".sql", prefix="ossie_mcp_control_")
+os.write(fd, control_sql.encode()); os.close(fd)
+try:
+    proc = subprocess.Popen(
+        ["duckdb", "-init", control_path],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, bufsize=1)
+    send({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2024-11-05","capabilities":{},
+        "clientInfo":{"name":"ossie-probe-control","version":"1"}}})
+    read()
+    send({"jsonrpc":"2.0","id":2,"method":"tools/list"})
+    r = read()
+    ctl = [t["name"] for t in (r or {}).get("result",{}).get("tools",[])]
+    check("control: without the flags the built-ins ARE exposed",
+          "query" in ctl and "export" in ctl, str(ctl))
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+finally:
+    os.unlink(control_path)
 
 print(f"\n{'all MCP checks passed' if ok else 'MCP checks FAILED'}")
 sys.exit(0 if ok else 1)

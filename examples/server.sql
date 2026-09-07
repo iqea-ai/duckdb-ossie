@@ -45,9 +45,18 @@ PRAGMA mcp_publish_tool(
     'markdown'
 );
 
--- SECURITY: duckdb_mcp also publishes generic tools -- query, export, list_tables, describe --
--- and offers no way to disable them, so an agent on this connection can run arbitrary SQL against
--- this database, not just semantic_query. Start this server only against a database holding data
--- you are willing to expose. The ossie-side guarantees (allowlisted filters, no subqueries) apply
--- to semantic_query, not to the connection.
-PRAGMA mcp_server_start('stdio');
+-- SECURITY: the five flags below are what make that guarantee hold. duckdb_mcp publishes generic
+-- tools -- query, export, list_tables, describe, database_info -- alongside anything you publish,
+-- and each one reaches the whole database. Disabling query alone is not enough: export takes an
+-- arbitrary SQL argument and is a second route to the same place. With all five off, tools/list
+-- returns only semantic_query and tools/call on the others is refused with "Tool not found".
+--
+-- Remove a flag and you reopen the connection. scripts/mcp_check.py asserts both directions of this
+-- on every push, so CI fails if it stops being true.
+PRAGMA mcp_server_start('stdio', 'localhost', 0, '{
+    "enable_query_tool": false,
+    "enable_export_tool": false,
+    "enable_describe_tool": false,
+    "enable_list_tables_tool": false,
+    "enable_database_info_tool": false
+}');
