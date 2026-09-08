@@ -1,12 +1,23 @@
 -- Publish an Ossie semantic model to AI agents over MCP.
---   duckdb -unsigned -init examples/server.sql
+--   duckdb -init examples/server.sql
 --
 -- Point Claude Desktop at it with:
 --   {"mcpServers": {"ossie": {"command": "duckdb",
---                             "args": ["-unsigned", "-init", "/abs/path/to/server.sql"]}}}
+--                             "args": ["-init", "/abs/path/to/server.sql"]}}}
+
+-- Every extension this script uses must be loaded explicitly. Running it from a build tree hides
+-- that, because ossie and tpcds are statically linked there; a user installing from the registry
+-- gets neither unless it is spelled out.
+INSTALL ossie FROM community;
+LOAD ossie;
 
 INSTALL duckdb_mcp FROM community;
 LOAD duckdb_mcp;
+
+-- tpcds only supplies dsdgen, for the demo data below. Drop both lines when pointing this at
+-- your own tables.
+INSTALL tpcds;
+LOAD tpcds;
 
 -- Replace with your own data. dsdgen gives a runnable demo out of the box.
 CALL dsdgen(sf = 0.01);
@@ -34,4 +45,18 @@ PRAGMA mcp_publish_tool(
     'markdown'
 );
 
-PRAGMA mcp_server_start('stdio');
+-- SECURITY: the five flags below are what make that guarantee hold. duckdb_mcp publishes generic
+-- tools -- query, export, list_tables, describe, database_info -- alongside anything you publish,
+-- and each one reaches the whole database. Disabling query alone is not enough: export takes an
+-- arbitrary SQL argument and is a second route to the same place. With all five off, tools/list
+-- returns only semantic_query and tools/call on the others is refused with "Tool not found".
+--
+-- Remove a flag and you reopen the connection. scripts/mcp_check.py asserts both directions of this
+-- on every push, so CI fails if it stops being true.
+PRAGMA mcp_server_start('stdio', 'localhost', 0, '{
+    "enable_query_tool": false,
+    "enable_export_tool": false,
+    "enable_describe_tool": false,
+    "enable_list_tables_tool": false,
+    "enable_database_info_tool": false
+}');

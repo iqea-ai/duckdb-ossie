@@ -93,19 +93,28 @@ the SQL that would run.
 [examples/server.sql](examples/server.sql) publishes the model over MCP:
 
 ```sh
-duckdb -unsigned -init examples/server.sql
+duckdb -init examples/server.sql
 ```
 
 Point Claude Desktop at it:
 
 ```json
 {"mcpServers": {"ossie": {"command": "duckdb",
-                          "args": ["-unsigned", "-init", "/abs/path/to/server.sql"]}}}
+                          "args": ["-init", "/abs/path/to/server.sql"]}}}
 ```
 
 The agent gets a `semantic_query` tool plus `metrics` and `dimensions` resources to discover names
-from. It can reach nothing but the model's own vocabulary: filters are allowlisted, subqueries are
-refused outright, and no argument lets a caller widen that.
+from. Within that tool it can reach nothing but the model's own vocabulary: filters are allowlisted,
+subqueries are refused outright, and no argument lets a caller widen that.
+
+That holds for the connection as a whole, not just the tool, because `server.sql` disables every
+built-in `duckdb_mcp` tool when it starts the server — `query`, `export`, `list_tables`, `describe`
+and `database_info`. `tools/list` returns only `semantic_query`, and calling any of the others is
+refused with *Tool not found*. `scripts/mcp_check.py` asserts this on every push.
+
+> **Writing your own server?** Disabling `query` is not sufficient on its own — `export` also takes
+> an arbitrary SQL argument and reaches the same data. Disable all five, or point the server only at
+> a database you are willing to expose in full.
 
 ## Building
 

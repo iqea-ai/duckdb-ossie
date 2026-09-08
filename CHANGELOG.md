@@ -11,6 +11,47 @@ pins). The DuckDB version each release targets is noted separately.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-03
+
+Targets DuckDB **v1.5.5**.
+
+Both fixes came from writing an MCP client and driving the published server the way Claude Desktop
+does. Neither the test suite nor the end-to-end functionality check covered that path.
+
+### Fixed
+- `examples/server.sql` never loaded the extension it demonstrates. It loaded `duckdb_mcp` but not
+  `ossie`, and called `dsdgen` without loading `tpcds`, so it only worked from a build tree where
+  both are statically linked. Anyone following the README after installing from the registry hit
+  `Catalog Error: Table Function with name ossie_load does not exist!` on the first statement that
+  mattered. All three extensions are now installed and loaded explicitly
+
+### Changed
+- Closed a hole behind a security claim. The documentation stated that an agent connected to the MCP
+  server "can reach nothing but the model's own vocabulary", which was false: `duckdb_mcp` also
+  publishes generic `query`, `export`, `list_tables`, `describe` and `database_info` tools, and
+  reading a table the semantic model never declares confirmed an agent could reach it.
+  `examples/server.sql` now disables all five when starting the server, so `tools/list` returns only
+  `semantic_query` and calling anything else is refused. Disabling `query` alone would not have been
+  enough — `export` takes an arbitrary SQL argument and reaches the same data. The claim is now true
+  and, more importantly, asserted by CI rather than written down. Reported upstream as
+  teaguesterling/duckdb_mcp#75; the flags existed but were absent from that project's tool table
+- Dropped `-unsigned` from the documented MCP invocation and the Claude Desktop config snippet. It
+  was left over from before `ossie` was in the registry, when the example could only run against a
+  locally built artifact. Community extensions are signed, so the flag did nothing but disable
+  signature verification for the whole session — including every session started by that pasted
+  config. `scripts/full_functionality_check.sh` keeps it, because it loads the local build
+  deliberately
+
+### Added
+- `scripts/mcp_check.py`, an end-to-end MCP check that speaks JSON-RPC over stdio to the published
+  server and asserts the full round trip: handshake, tool discovery, vocabulary discovery, real rows
+  from `semantic_query`, and a multi-grain refusal arriving as a readable error
+- A `MCP round trip` CI job that runs it on every push. It deliberately uses a stock DuckDB CLI
+  rather than the build tree, because static linking in the build tree is what hid the bug above:
+  CI was green on a `server.sql` that failed for everyone installing from the registry
+- A `CI gate` job aggregating the build matrix, the MCP round trip and the quality checks into one
+  stable check name, so branch protection can require it without depending on matrix job names
+
 ## [0.1.0] - 2026-08-27
 
 Targets DuckDB **v1.5.5**.
@@ -82,5 +123,6 @@ most likely to affect you:
 - **No row cap.** `ossie_query` takes metrics, dimensions, and filters and nothing else, so a
   high-cardinality dimension returns every row
 
-[Unreleased]: https://github.com/iqea-ai/duckdb-ossie/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/iqea-ai/duckdb-ossie/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/iqea-ai/duckdb-ossie/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/iqea-ai/duckdb-ossie/releases/tag/v0.1.0

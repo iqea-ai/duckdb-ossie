@@ -23,6 +23,53 @@ jobs:
       ci_tools_version: v1.5.5
       extension_name: ossie
 
+  mcp-round-trip:
+    name: MCP round trip
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The check drives examples/server.sql, which installs ossie and duckdb_mcp from the community
+      # registry, so it needs a stock CLI and network rather than this repo's build tree. Using the
+      # build tree would defeat the purpose: static linking there is exactly what hid the bug this
+      # job exists to catch, where server.sql never loaded the extension it demonstrates and failed
+      # for everyone installing from the registry.
+      - name: Install the DuckDB CLI
+        run: |
+          curl -fsSL https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Speak MCP to the published server
+        run: python3 scripts/mcp_check.py
+
+  # One stable check name for branch protection to require.
+  #
+  # The build matrix cannot be required directly: its check names embed the full matrix tuple
+  # ("Build extension binaries / Linux (linux_amd64, ubuntu-24.04, x64-linux-release, ...)"), so any
+  # matrix change or extension-ci-tools bump would leave a required check that never reports and
+  # every PR stuck on "waiting for status". This job's name never changes.
+  #
+  # if: always() is load-bearing. Without it a failed dependency SKIPS this job, and GitHub can
+  # count a skipped required check as satisfied -- the gate would silently pass on a red build.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [duckdb-stable-build, mcp-round-trip, code-quality-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every gating job to have succeeded
+        run: |
+          echo "build   = ${{ needs.duckdb-stable-build.result }}"
+          echo "mcp     = ${{ needs.mcp-round-trip.result }}"
+          echo "quality = ${{ needs.code-quality-check.result }}"
+          [ "${{ needs.duckdb-stable-build.result }}" = success ] \
+          && [ "${{ needs.mcp-round-trip.result }}" = success ] \
+          && [ "${{ needs.code-quality-check.result }}" = success ]
+
   code-quality-check:
     name: Code Quality Check
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5.5
