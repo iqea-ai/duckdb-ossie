@@ -69,12 +69,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Restores build/release/extension/ossie/ossie.duckdb_extension -- exactly the path
-      # scripts/full_functionality_check.sh reads as $EXT.
+      # upload-artifact@v4 collapses to the least common ancestor of the paths it was given, so the
+      # artifact holds a bare ossie.duckdb_extension, not the build/release/... tree it came from.
+      # Download it somewhere neutral and put it where the check script reads $EXT.
       - uses: actions/download-artifact@v4
         with:
           name: ossie-v1.5.5-extension-${{ matrix.arch }}
-          path: .
+          path: downloaded
+
+      - name: Place the artifact where the check script reads it
+        run: |
+          find downloaded -type f
+          mkdir -p build/release/extension/ossie
+          cp downloaded/ossie.duckdb_extension build/release/extension/ossie/
 
       - name: Install the stock DuckDB CLI
         run: |
