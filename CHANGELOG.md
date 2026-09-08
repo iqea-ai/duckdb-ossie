@@ -11,7 +11,7 @@ pins). The DuckDB version each release targets is noted separately.
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-09-03
+## [0.1.1] - 2026-09-07
 
 Targets DuckDB **v1.5.5**.
 
