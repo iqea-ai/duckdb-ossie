@@ -46,6 +46,66 @@ jobs:
       - name: Speak MCP to the published server
         run: python3 scripts/mcp_check.py
 
+  # Load the file we actually ship.
+  #
+  # Every other test runs inside a build tree, where the extension is statically linked into the
+  # binary under test -- so the load path is never exercised. That is the shape of the v0.1.0 bug:
+  # examples/server.sql worked in the build tree and failed for everyone who installed normally,
+  # with CI green throughout. The registry has a job for this (generate_docs.yml) but it is
+  # disabled there with `if: false`, so nothing in the publish path opens the artifact either.
+  #
+  # -unsigned is correct here and nowhere else: a freshly built artifact is genuinely unsigned,
+  # unlike the signed builds the registry serves.
+  artifact-load:
+    name: Load built artifact (${{ matrix.arch }})
+    needs: duckdb-stable-build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: linux_amd64, runner: ubuntu-24.04 }
+          - { arch: osx_arm64,   runner: macos-15 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # upload-artifact@v4 collapses to the least common ancestor of the paths it was given, so the
+      # artifact holds a bare ossie.duckdb_extension, not the build/release/... tree it came from.
+      # Download it somewhere neutral and put it where the check script reads $EXT.
+      - uses: actions/download-artifact@v4
+        with:
+          name: ossie-v1.5.5-extension-${{ matrix.arch }}
+          path: downloaded
+
+      - name: Place the artifact where the check script reads it
+        run: |
+          find downloaded -type f
+          mkdir -p build/release/extension/ossie
+          cp downloaded/ossie.duckdb_extension build/release/extension/ossie/
+
+      - name: Install the stock DuckDB CLI
+        run: |
+          curl -fsSL https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Run the functionality check against the artifact
+        run: |
+          set -uo pipefail
+          EXT=build/release/extension/ossie/ossie.duckdb_extension
+          test -f "$EXT" || { echo "::error::artifact missing at $EXT"; exit 1; }
+
+          out=$(./scripts/full_functionality_check.sh); status=$?
+          echo "$out"
+
+          # The script falls back to the build-tree binary when the artifact will not load. That
+          # binary does not exist on a runner, so the fallback fails unreadably -- assert the mode
+          # explicitly so "the artifact did not load" is what gets reported.
+          case "$out" in
+            *FAITHFUL*) ;;
+            *) echo "::error::fell back to the build tree -- the artifact did not load"; exit 1 ;;
+          esac
+          exit $status
+
   # One stable check name for branch protection to require.
   #
   # The build matrix cannot be required directly: its check names embed the full matrix tuple
@@ -58,15 +118,17 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [duckdb-stable-build, mcp-round-trip, code-quality-check]
+    needs: [duckdb-stable-build, artifact-load, mcp-round-trip, code-quality-check]
     runs-on: ubuntu-latest
     steps:
       - name: Require every gating job to have succeeded
         run: |
-          echo "build   = ${{ needs.duckdb-stable-build.result }}"
-          echo "mcp     = ${{ needs.mcp-round-trip.result }}"
-          echo "quality = ${{ needs.code-quality-check.result }}"
+          echo "build    = ${{ needs.duckdb-stable-build.result }}"
+          echo "artifact = ${{ needs.artifact-load.result }}"
+          echo "mcp      = ${{ needs.mcp-round-trip.result }}"
+          echo "quality  = ${{ needs.code-quality-check.result }}"
           [ "${{ needs.duckdb-stable-build.result }}" = success ] \
+          && [ "${{ needs.artifact-load.result }}" = success ] \
           && [ "${{ needs.mcp-round-trip.result }}" = success ] \
           && [ "${{ needs.code-quality-check.result }}" = success ]
 
