@@ -20,8 +20,11 @@ moves.
 | `sales.ossie.yaml` | `converters/nvidia/tests/fixtures/` | yes (its one metric is multi-grain, so queries on it are refused) |
 | `fixtureA_ossie.yaml` | `converters/databricks/tests/fixtures/` | no — carries only `DATABRICKS` expressions |
 
-`osi-schema.json` is the official `core-spec/osi-schema.json`, kept so the models here (and our own)
-can be validated against the format's own definition rather than against our reading of it.
+`osi-schema.json` is the official schema, kept so the models here (and our own) can be validated
+against the format's own definition rather than against our reading of it. Upstream has since
+renamed it to `core-spec/ossie-schema.json` as part of the project-wide `osi` -> `ossie` rename; the
+local filename is left alone because these files are vendored verbatim and the `$id` inside still
+carries the old path.
 
 Four of five load. The one refusal is correct: that model carries only `DATABRICKS` expressions, so
 this extension genuinely cannot execute it.
