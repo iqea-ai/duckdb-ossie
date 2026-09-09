@@ -26,12 +26,14 @@ implementation that answers a question rather than translating one.
 
 Claims about a file format should be checkable, so:
 
-- Models are validated against the format's own [`core-spec/osi-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/osi-schema.json)
+- Models are validated against the format's own [`core-spec/ossie-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/ossie-schema.json)
 - The suite includes five models published by *other* Ossie implementers — Databricks, GoodData,
   NVIDIA, Omni and OrionBelt — vendored verbatim from `apache/ossie`. Four load and answer queries.
   The fifth carries only `DATABRICKS` expressions, which this extension does not execute
-- Generated SQL is checked against hand-written TPC-DS SQL at `sf=1` across every metric and every
-  dimension, so correctness is measured against the numbers rather than against our own output
+- Generated SQL is diffed against hand-written TPC-DS equivalents with symmetric `EXCEPT` over
+  `dsdgen(sf = 0.01)` data, so correctness is measured against the numbers rather than against our
+  own output. This currently covers `total_sales` and `books_sales`. The remaining metrics are
+  exercised by the golden-SQL, grain or vocabulary tests, none of which can catch a wrong *number*
 
 What is not yet supported is listed in [docs/limitations.md](docs/limitations.md): `ANSI_SQL`
 expressions only, one semantic model per file, table-backed sources only, and metrics that span

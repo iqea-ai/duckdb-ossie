@@ -97,7 +97,7 @@ against the model and runs the SQL on DuckDB.
   vendored as a single unmodified header and YAML is converted to JSON before parsing, which leaves
   every validation guard and the compiler unaware of how a model was serialized
 - Conformance fixtures: five models taken verbatim from apache/ossie, plus the official
-  `core-spec/osi-schema.json`. Every other fixture here was written alongside the compiler and so
+  `core-spec/ossie-schema.json`. Every other fixture here was written alongside the compiler and so
   shares its assumptions; these are the only ones that can detect a divergence between this
   implementation's reading of the format and anyone else's. Four of the five load, and the fifth is
   refused correctly because it carries only `DATABRICKS` expressions
