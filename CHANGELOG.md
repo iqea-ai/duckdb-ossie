@@ -11,6 +11,20 @@ pins). The DuckDB version each release targets is noted separately.
 
 ## [Unreleased]
 
+Targets DuckDB **v1.5.6**.
+
+### Changed
+- Built against DuckDB v1.5.6 and extension-ci-tools v1.5.6. No source change was needed: every
+  changed header this extension includes came from DuckDB's additive "2.0 API spellings" backport,
+  and the test suite passes unchanged (210 assertions in 12 test cases)
+- CI installs the stock DuckDB CLI pinned to the version the extension is built against, rather
+  than whatever `install.duckdb.org` calls latest. On DuckDB's release day the `artifact-load` and
+  `mcp-round-trip` jobs had gone red with no change here: a v1.5.5-built artifact cannot load in a
+  v1.5.6 CLI, and the registry had nothing to serve for v1.5.6 yet
+- CI's MCP round trip runs the extension that CI run built, not the copy in the community registry,
+  which only ever serves code that has already merged. Installing from the registry is checked by a
+  separate daily workflow that cannot block a merge
+
 ## [0.1.1] - 2026-09-07
 
 Targets DuckDB **v1.5.5**.
