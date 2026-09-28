@@ -38,10 +38,18 @@ jobs:
       # build tree would defeat the purpose: static linking there is exactly what hid the bug this
       # job exists to catch, where server.sql never loaded the extension it demonstrates and failed
       # for everyone installing from the registry.
+      # Pinned to the DuckDB version the extension is built against, not to whatever
+      # install.duckdb.org calls latest. This job tests our artifact in the CLI it targets; following
+      # "latest" made it test the world's release schedule instead, and it went red on every DuckDB
+      # release day with no change on our side. The installer only refreshes its `latest` directory
+      # when the requested version is upstream's latest, so PATH must name the versioned directory.
       - name: Install the DuckDB CLI
+        env:
+          # Must match duckdb_version in duckdb-stable-build, minus the leading v.
+          DUCKDB_VERSION: 1.5.5
         run: |
           curl -fsSL https://install.duckdb.org | sh
-          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+          echo "$HOME/.duckdb/cli/$DUCKDB_VERSION" >> "$GITHUB_PATH"
 
       - name: Speak MCP to the published server
         run: python3 scripts/mcp_check.py
@@ -83,10 +91,15 @@ jobs:
           mkdir -p build/release/extension/ossie
           cp downloaded/ossie.duckdb_extension build/release/extension/ossie/
 
+      # Same pin as mcp-round-trip, for the same reason: the artifact under test was built for
+      # exactly this version and loads in no other.
       - name: Install the stock DuckDB CLI
+        env:
+          # Must match duckdb_version in duckdb-stable-build, minus the leading v.
+          DUCKDB_VERSION: 1.5.5
         run: |
           curl -fsSL https://install.duckdb.org | sh
-          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+          echo "$HOME/.duckdb/cli/$DUCKDB_VERSION" >> "$GITHUB_PATH"
 
       - name: Run the functionality check against the artifact
         run: |
