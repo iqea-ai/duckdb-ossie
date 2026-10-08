@@ -44,7 +44,7 @@ RebindMap ParseRebind(const Value &value) {
 }
 
 unique_ptr<FunctionData> LoadBind(ClientContext &context, TableFunctionBindInput &input,
-                                  vector<LogicalType> &return_types, vector<string> &names) {
+                                  vector<LogicalType> &return_types, vector<Identifier> &names) {
 	auto result = make_uniq<LoadBindData>();
 	if (input.inputs.empty() || input.inputs[0].IsNull()) {
 		throw InvalidInputException("ossie_load: a model path is required");
@@ -52,11 +52,12 @@ unique_ptr<FunctionData> LoadBind(ClientContext &context, TableFunctionBindInput
 	result->path = input.inputs[0].GetValue<string>();
 
 	for (auto &entry : input.named_parameters) {
-		if (StringUtil::CIEquals(entry.first, "rebind")) {
+		auto &name = entry.first.GetIdentifierName();
+		if (StringUtil::CIEquals(name, "rebind")) {
 			result->rebind = ParseRebind(entry.second);
-		} else if (StringUtil::CIEquals(entry.first, "validate_sources")) {
+		} else if (StringUtil::CIEquals(name, "validate_sources")) {
 			result->validate_sources = entry.second.GetValue<bool>();
-		} else if (StringUtil::CIEquals(entry.first, "allow_filter_functions")) {
+		} else if (StringUtil::CIEquals(name, "allow_filter_functions")) {
 			result->allow_filter_functions = entry.second.GetValue<bool>();
 		}
 	}
@@ -101,13 +102,13 @@ void LoadFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk 
 		field_count += dataset.fields.size();
 	}
 
-	output.SetCardinality(1);
-	output.SetValue(0, 0, Value(model->name));
-	output.SetValue(1, 0, model->spec_version.empty() ? Value(LogicalType::VARCHAR) : Value(model->spec_version));
-	output.SetValue(2, 0, Value::BIGINT(static_cast<int64_t>(model->datasets.size())));
-	output.SetValue(3, 0, Value::BIGINT(static_cast<int64_t>(field_count)));
-	output.SetValue(4, 0, Value::BIGINT(static_cast<int64_t>(model->relationships.size())));
-	output.SetValue(5, 0, Value::BIGINT(static_cast<int64_t>(model->metrics.size())));
+	output.data[0].Append(Value(model->name));
+	output.data[1].Append(model->spec_version.empty() ? Value(LogicalType::VARCHAR) : Value(model->spec_version));
+	output.data[2].Append(Value::BIGINT(static_cast<int64_t>(model->datasets.size())));
+	output.data[3].Append(Value::BIGINT(static_cast<int64_t>(field_count)));
+	output.data[4].Append(Value::BIGINT(static_cast<int64_t>(model->relationships.size())));
+	output.data[5].Append(Value::BIGINT(static_cast<int64_t>(model->metrics.size())));
+	output.CheckCardinality(1);
 
 	OssieState::Get(context).SetModel(std::move(model), bind_data.allow_filter_functions);
 	global_state.done = true;
@@ -137,9 +138,12 @@ shared_ptr<Model> OssieState::GetModel() {
 
 void RegisterLoadFunction(ExtensionLoader &loader) {
 	TableFunction ossie_load("ossie_load", {LogicalType::VARCHAR}, LoadFunction, LoadBind, LoadInitGlobal);
-	ossie_load.named_parameters["rebind"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
-	ossie_load.named_parameters["validate_sources"] = LogicalType::BOOLEAN;
-	ossie_load.named_parameters["allow_filter_functions"] = LogicalType::BOOLEAN;
+	// Keyword-only parameters without a default are required, so each carries the value it has when omitted.
+	auto rebind_type = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
+	ossie_load.GetSignature()
+	    .AddKeywordOnly("rebind", rebind_type, Value(rebind_type))
+	    .AddKeywordOnly("validate_sources", LogicalType::BOOLEAN, Value::BOOLEAN(false))
+	    .AddKeywordOnly("allow_filter_functions", LogicalType::BOOLEAN, Value::BOOLEAN(false));
 
 	CreateTableFunctionInfo info(ossie_load);
 	info.descriptions.push_back(Describe(
