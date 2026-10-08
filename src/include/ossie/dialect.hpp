@@ -18,7 +18,8 @@ constexpr const char *ANSI_SQL = "ANSI_SQL";
 //! Ossie expression language gives it. Functions DuckDB lacks or spells differently are replaced by
 //! equivalent trees. A construct whose result the language leaves undefined, or that has no faithful
 //! DuckDB equivalent, is refused with an InvalidInputException naming it, so a model fails at load
-//! rather than returning a number nobody specified. `context` names the field or metric for errors.
+//! rather than returning a number nobody specified. `context` begins every error: the caller
+//! prefixes it, "ossie_load: field ..." at load or "ossie: filter ..." for a request.
 void LowerOssieSql2026(unique_ptr<ParsedExpression> &expr, const string &context);
 
 } // namespace ossie

@@ -157,3 +157,36 @@ statement error
 CALL ossie_load('test/fixtures/invalid/ossie_sql_2026_arity.json');
 ----
 field "o.f" calls NVL with 3 argument(s); OSSIE_SQL_2026 defines it as NVL(expr, default)
+
+# --- request filters are in the same language ------------------------------------------------------------
+# A filter is lowered the way a field is, after the policy check judges what the caller wrote.
+
+statement error
+SELECT * FROM ossie_query(['order_count'], [], ['NVL(o.region, ''x'') = ''x''']);
+----
+filter "NVL(o.region, 'x') = 'x'" calls function "nvl". Load the model with allow_filter_functions => true
+
+statement ok
+CALL ossie_load('test/fixtures/ossie_sql_2026_model.json', allow_filter_functions => true);
+
+query I
+SELECT * FROM ossie_query(['order_count'], [], ['NVL(o.region, ''none'') = ''none''']);
+----
+1
+
+# CONCAT means the same in a filter as in a field: NULL in gives NULL out. DuckDB's own concat would match none.
+query I
+SELECT * FROM ossie_query(['order_count'], [], ['CONCAT(o.region, o.code) IS NULL']);
+----
+1
+
+# The bare date part is lowered before names are resolved, so `day` is not mistaken for a field.
+query I
+SELECT * FROM ossie_query(['order_count'], [], ['DATEADD(day, 30, o.created_month) > DATE ''2024-02-15''']);
+----
+2
+
+statement error
+SELECT * FROM ossie_query(['order_count'], [], ['REGEXP_LIKE(o.code, ''A.*'')']);
+----
+ossie: filter "REGEXP_LIKE(o.code, 'A.*')" calls REGEXP_LIKE, whose result OSSIE_SQL_2026 does not define

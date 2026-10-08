@@ -91,6 +91,16 @@ NULL arguments. The language's own `||` and standard SQL return NULL when any ar
 function outside the language that DuckDB does not know is not refused at load: it reaches DuckDB's
 binder at query time, as it would in an `ANSI_SQL` expression.
 
+Request filters are read in the same language, whatever dialect the model's own expressions use: a filter
+is lowered exactly as an `OSSIE_SQL_2026` field is, after `allow_filter_functions` has judged the filter
+as written. So `NVL` and `DATEADD(day, 30, d)` work in a filter, and `CONCAT(a, b) IS NULL` is true when
+either is NULL, as it would be in a field.
+
+**Quoted identifiers compare case-insensitively.** The language makes a quoted identifier exact: `"id"`
+should not match a column created as `id` (normalised to `ID`). DuckDB matches quoted names
+case-insensitively, and so does this extension. Only a model that relies on two names differing solely in
+case, one of them quoted, can tell the difference.
+
 **Table sources only.** `source` may name a query rather than a table under the spec. Such a
 source can neither be prefix-rebound nor bound as a table reference, so it is refused at load.
 

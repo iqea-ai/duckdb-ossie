@@ -99,8 +99,8 @@ void RequireArgumentCount(const FunctionExpression &function, idx_t minimum, idx
                           const string &context) {
 	auto count = function.children.size();
 	if (count < minimum || count > maximum) {
-		throw InvalidInputException("ossie_load: %s calls %s with %s argument(s); OSSIE_SQL_2026 defines it as %s",
-		                            context, StringUtil::Upper(function.function_name), to_string(count), spelling);
+		throw InvalidInputException("%s calls %s with %s argument(s); OSSIE_SQL_2026 defines it as %s", context,
+		                            StringUtil::Upper(function.function_name), to_string(count), spelling);
 	}
 }
 
@@ -126,7 +126,7 @@ string DatePart(const ParsedExpression &argument, const string &function_name, c
 			return part;
 		}
 	}
-	throw InvalidInputException("ossie_load: %s calls %s with date part %s; OSSIE_SQL_2026 defines year, "
+	throw InvalidInputException("%s calls %s with date part %s; OSSIE_SQL_2026 defines year, "
 	                            "quarter, month, week, day, hour, minute and second",
 	                            context, StringUtil::Upper(function_name), argument.ToString());
 }
@@ -180,7 +180,7 @@ unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const s
 		auto is_date = name == "to_date";
 		if (args.size() != 1) {
 			throw InvalidInputException(
-			    "ossie_load: %s calls %s with a format argument. Format models differ between engines and "
+			    "%s calls %s with a format argument. Format models differ between engines and "
 			    "the format-string form is EXPERIMENTAL in OSSIE_SQL_2026; write the value as an ISO-8601 "
 			    "string, which %s(string) parses the same everywhere",
 			    context, StringUtil::Upper(name), StringUtil::Upper(name));
@@ -224,7 +224,7 @@ unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const s
 	}
 	if (name == "regexp_like") {
 		throw InvalidInputException(
-		    "ossie_load: %s calls REGEXP_LIKE, whose result OSSIE_SQL_2026 does not define: engines disagree on "
+		    "%s calls REGEXP_LIKE, whose result OSSIE_SQL_2026 does not define: engines disagree on "
 		    "whether the pattern must match the whole string (Snowflake) or any part of it (Databricks, "
 		    "BigQuery). Use LIKE, or give the expression an ANSI_SQL variant that says which you mean",
 		    context);

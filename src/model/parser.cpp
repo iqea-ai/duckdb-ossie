@@ -196,7 +196,7 @@ ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) 
 		}
 		result.tree = std::move(parsed[0]);
 		if (result.dialect == OSSIE_SQL_2026) {
-			LowerOssieSql2026(result.tree, context);
+			LowerOssieSql2026(result.tree, "ossie_load: " + context);
 		}
 	} catch (const ParserException &ex) {
 		throw InvalidInputException("ossie_load: %s has an unparseable expression '%s': %s", context, result.sql,

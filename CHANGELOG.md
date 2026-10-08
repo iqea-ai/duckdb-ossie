@@ -38,6 +38,9 @@ breaking, that 0.1.1 predates.
   bare date part) are lowered to equivalent DuckDB trees at load. `CONCAT`, `GREATEST` and `LEAST`
   return NULL when any argument is NULL, as the language's `||` does, unlike DuckDB's own. Constructs
   whose result the language leaves undefined, such as `REGEXP_LIKE`, are refused at load, by name
+- Request filters are read in the same language: `NVL`, `DATEADD(day, 30, d)` and the rest work in a
+  filter, and `CONCAT`, `GREATEST` and `LEAST` there return NULL when any argument is NULL, as in a field.
+  Filters are still checked against `allow_filter_functions` as written, before any rewriting
 - Upstream's `examples/tpcds_semantic_model.yaml` joins the vendored conformance models, which are
   re-vendored from one upstream commit (8dd6732) under a directory per converter
 

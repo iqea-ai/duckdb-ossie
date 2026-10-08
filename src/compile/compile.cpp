@@ -15,6 +15,7 @@
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "ossie/catalog.hpp"
+#include "ossie/dialect.hpp"
 
 #include <algorithm>
 
@@ -402,6 +403,11 @@ Filter ResolveFilter(const Model &model, const string &request, const CompileOpt
 
 	Filter result;
 	result.expr = std::move(parsed[0]);
+	// A filter is written in the model's own expression language, so it is lowered the way an OSSIE_SQL_2026
+	// field is: NVL and DATEADD(day, ...) work, and CONCAT means what it means in a field. This comes after the
+	// policy check, which judges what the caller wrote, and before names are resolved, since the bare date part
+	// in DATEADD(day, ...) is not a name.
+	LowerOssieSql2026(result.expr, StringUtil::Format("ossie: filter \"%s\"", request));
 	ResolveFilterNames(model, result.expr, request, result.is_aggregate);
 	return result;
 }
