@@ -91,8 +91,22 @@ CREATE TABLE ansi_state_2001 AS SELECT * FROM ossie_query(['total_sales'], ['sto
 statement ok
 CREATE TABLE ansi_customer AS SELECT * FROM ossie_query(['total_sales'], ['customer.customer_full_name']);
 
+# The OSSIE_SQL_2026 model is built here from the reference model rather than kept as a second 900-line
+# file, so the two can never drift: only the dialect label changes.
 statement ok
-CALL ossie_load('test/fixtures/tpcds_semantic_model_ossie_sql_2026.json', rebind => MAP{'tpcds.public': 'memory.main'});
+COPY (SELECT replace(content, '"dialect": "ANSI_SQL"', '"dialect": "OSSIE_SQL_2026"')
+      FROM read_text('test/fixtures/tpcds_semantic_model.json'))
+TO '__TEST_DIR__/tpcds_semantic_model_ossie_sql_2026.json' (FORMAT csv, HEADER false, QUOTE '');
+
+# Every expression was relabelled, and none was missed
+query II
+SELECT strpos(content, '"ANSI_SQL"'), (length(content) - length(replace(content, '"OSSIE_SQL_2026"', ''))) // 16
+FROM read_text('__TEST_DIR__/tpcds_semantic_model_ossie_sql_2026.json');
+----
+0	36
+
+statement ok
+CALL ossie_load('__TEST_DIR__/tpcds_semantic_model_ossie_sql_2026.json', rebind => MAP{'tpcds.public': 'memory.main'});
 
 query I
 SELECT count(*) FROM (
