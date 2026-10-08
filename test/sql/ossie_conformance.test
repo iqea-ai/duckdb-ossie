@@ -62,3 +62,34 @@ statement error
 SELECT ossie_compile(['revenue_per_customer'], [], []);
 ----
 different grains
+
+# --- upstream's own example model -------------------------------------------------------------------
+# The file the flat document shape was introduced with. Its plain metrics compile exactly as our
+# reference model's do.
+query TTIIII
+CALL ossie_load('test/fixtures/conformance/examples/tpcds_semantic_model.yaml', rebind => MAP{'tpcds.public': 'tpcds.main'});
+----
+tpcds_retail_model	0.2.0.dev0	5	31	4	8
+
+query T
+SELECT ossie_compile(['total_sales'], ['store.s_state'], []);
+----
+SELECT store.s_state AS "store.s_state", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) GROUP BY store.s_state
+
+# Three of its metrics are window functions. A window's rows depend on the dimensions requested, which
+# the metric cannot know: grouped by date and category, its running total runs across categories in an
+# order that ties on date leave arbitrary. They are refused, by name, rather than computed.
+statement error
+SELECT ossie_compile(['cumulative_sales'], ['date_dim.d_date'], []);
+----
+metric "cumulative_sales" uses the window function SUM, whose result changes with the dimensions requested in a way the model does not define
+
+statement error
+SELECT ossie_compile(['brand_rank_in_store'], ['item.i_brand'], []);
+----
+metric "brand_rank_in_store" uses the window function RANK
+
+statement error
+SELECT ossie_compile(['monthly_sales_change'], [], []);
+----
+metric "monthly_sales_change" uses the window function LAG

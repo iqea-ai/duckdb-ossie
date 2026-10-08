@@ -30,6 +30,7 @@ Apache Ossie semantic model fixtures
     test/fixtures/conformance/omni/fixtureA_ossie.yaml              from converters/omni/tests/fixtures/
     test/fixtures/conformance/databricks/ossie_fixtureA_ossie.yaml  from converters/databricks/java/src/test/resources/
     test/fixtures/conformance/nvidia/sales.ossie.yaml               from converters/nvidia/tests/fixtures/
+    test/fixtures/conformance/examples/tpcds_semantic_model.yaml    from examples/
 
   Copyright The Apache Software Foundation.
   Licensed under the Apache License, Version 2.0.

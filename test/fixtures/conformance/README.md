@@ -12,7 +12,7 @@ share the same assumptions. These files are the only ones that can.
 They are **copied in, not fetched at test time**: CI must not depend on the network, and upstream
 moves.
 
-All six files are taken at apache/ossie commit `8dd6732da354f22ca71f16d82626a46039ecdcd9` and sit
+All seven files are taken at apache/ossie commit `8dd6732da354f22ca71f16d82626a46039ecdcd9` and sit
 under a directory named for the converter that wrote them, keeping upstream's own filenames. Two of
 those names collide once the directory is dropped, which is why the directories exist.
 
@@ -23,15 +23,16 @@ those names collide once the directory is dropped, which is why the directories 
 | `gooddata/ossie_tpcds.yaml` | `converters/gooddata/tests/fixtures/` | yes |
 | `nvidia/sales.ossie.yaml` | `converters/nvidia/tests/fixtures/` | yes (its one metric is multi-grain, so queries on it are refused) |
 | `databricks/ossie_fixtureA_ossie.yaml` | `converters/databricks/java/src/test/resources/` | no — carries only `DATABRICKS` expressions |
+| `examples/tpcds_semantic_model.yaml` | `examples/` | yes (its three window-function metrics are refused when queried) |
 
 `ossie-schema.json` is the official schema from `core-spec/`, kept so the models here (and our own)
 can be validated against the format's own definition rather than against our reading of it.
 
-All six are in the flat document shape that Ossie 0.2.0.dev0 requires: one model at the root, no
+All seven are in the flat document shape that Ossie 0.2.0.dev0 requires: one model at the root, no
 `semantic_model` array. When upstream changes them again, re-vendor all of them from one commit and
 update that commit here and in `NOTICE`.
 
-Four of five load. The one refusal is correct: that model carries only `DATABRICKS` expressions, so
+Five of six models load. The one refusal is correct: that model carries only `DATABRICKS` expressions, so
 this extension genuinely cannot execute it.
 
 The gooddata and nvidia models were refused until the declared-field requirements were removed from
