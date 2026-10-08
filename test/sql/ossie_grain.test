@@ -28,7 +28,7 @@ aggregate at 2 different grains
 query T
 SELECT ossie_compile(['books_sales'], [], []);
 ----
-SELECT sum(CASE  WHEN ((item.i_category = 'Books')) THEN (store_sales.ss_ext_sales_price) ELSE 0 END) AS books_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk))
+SELECT sum(CASE  WHEN ((item.i_category = 'Books')) THEN (store_sales.ss_ext_sales_price) ELSE 0 END) AS books_sales FROM (tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.item AS item ON ((store_sales.ss_item_sk = item.i_item_sk)))
 
 # COUNT(*) names no dataset, so alone there is no table to count.
 statement error

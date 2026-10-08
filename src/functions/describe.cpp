@@ -38,7 +38,7 @@ Value StringList(const vector<string> &values) {
 }
 
 unique_ptr<FunctionData> RelationshipsBind(ClientContext &context, TableFunctionBindInput &input,
-                                           vector<LogicalType> &return_types, vector<string> &names) {
+                                           vector<LogicalType> &return_types, vector<Identifier> &names) {
 	names = {"name", "from_dataset", "to_dataset", "from_columns", "to_columns", "cardinality"};
 	return_types = {LogicalType::VARCHAR,
 	                LogicalType::VARCHAR,
@@ -56,19 +56,19 @@ void RelationshipsFunction(ClientContext &context, TableFunctionInput &data_p, D
 	idx_t count = 0;
 	while (state.offset < relationships.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &relationship = relationships[state.offset++];
-		output.SetValue(0, count, Value(relationship.name));
-		output.SetValue(1, count, Value(relationship.from_dataset));
-		output.SetValue(2, count, Value(relationship.to_dataset));
-		output.SetValue(3, count, StringList(relationship.from_columns));
-		output.SetValue(4, count, StringList(relationship.to_columns));
-		output.SetValue(5, count, Value(CardinalityName(relationship.cardinality)));
+		output.data[0].Append(Value(relationship.name));
+		output.data[1].Append(Value(relationship.from_dataset));
+		output.data[2].Append(Value(relationship.to_dataset));
+		output.data[3].Append(StringList(relationship.from_columns));
+		output.data[4].Append(StringList(relationship.to_columns));
+		output.data[5].Append(Value(CardinalityName(relationship.cardinality)));
 		count++;
 	}
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 unique_ptr<FunctionData> DatasetsBind(ClientContext &context, TableFunctionBindInput &input,
-                                      vector<LogicalType> &return_types, vector<string> &names) {
+                                      vector<LogicalType> &return_types, vector<Identifier> &names) {
 	names = {"name", "source", "source_bound", "resolved", "primary_key", "unique_keys", "description", "synonyms"};
 	return_types = {LogicalType::VARCHAR,
 	                LogicalType::VARCHAR,
@@ -93,21 +93,21 @@ void DatasetsFunction(ClientContext &context, TableFunctionInput &data_p, DataCh
 			unique_keys.push_back(StringList(unique_key));
 		}
 
-		output.SetValue(0, count, Value(dataset.name));
-		output.SetValue(1, count, Value(dataset.source_raw));
-		output.SetValue(2, count, Value(dataset.source_bound));
-		output.SetValue(3, count, Value::BOOLEAN(SourceResolves(context, dataset.source_bound)));
-		output.SetValue(4, count, StringList(dataset.primary_key));
-		output.SetValue(5, count, Value::LIST(LogicalType::LIST(LogicalType::VARCHAR), std::move(unique_keys)));
-		output.SetValue(6, count, Value(dataset.description));
-		output.SetValue(7, count, StringList(dataset.ai_context.synonyms));
+		output.data[0].Append(Value(dataset.name));
+		output.data[1].Append(Value(dataset.source_raw));
+		output.data[2].Append(Value(dataset.source_bound));
+		output.data[3].Append(Value::BOOLEAN(SourceResolves(context, dataset.source_bound)));
+		output.data[4].Append(StringList(dataset.primary_key));
+		output.data[5].Append(Value::LIST(LogicalType::LIST(LogicalType::VARCHAR), std::move(unique_keys)));
+		output.data[6].Append(Value(dataset.description));
+		output.data[7].Append(StringList(dataset.ai_context.synonyms));
 		count++;
 	}
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 unique_ptr<FunctionData> FieldsBind(ClientContext &context, TableFunctionBindInput &input,
-                                    vector<LogicalType> &return_types, vector<string> &names) {
+                                    vector<LogicalType> &return_types, vector<Identifier> &names) {
 	names = {"dataset", "name", "datatype", "is_time", "is_computed", "expression", "description", "synonyms"};
 	return_types = {
 	    LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::BOOLEAN,
@@ -130,21 +130,21 @@ void FieldsFunction(ClientContext &context, TableFunctionInput &data_p, DataChun
 		}
 		auto &field = dataset.fields[state.offset++];
 
-		output.SetValue(0, count, Value(dataset.name));
-		output.SetValue(1, count, Value(field.name));
-		output.SetValue(2, count, field.datatype.empty() ? Value(LogicalType::VARCHAR) : Value(field.datatype));
-		output.SetValue(3, count, Value::BOOLEAN(field.is_time));
-		output.SetValue(4, count, Value::BOOLEAN(field.is_computed));
-		output.SetValue(5, count, Value(field.expression.sql));
-		output.SetValue(6, count, Value(field.description));
-		output.SetValue(7, count, StringList(field.ai_context.synonyms));
+		output.data[0].Append(Value(dataset.name));
+		output.data[1].Append(Value(field.name));
+		output.data[2].Append(field.datatype.empty() ? Value(LogicalType::VARCHAR) : Value(field.datatype));
+		output.data[3].Append(Value::BOOLEAN(field.is_time));
+		output.data[4].Append(Value::BOOLEAN(field.is_computed));
+		output.data[5].Append(Value(field.expression.sql));
+		output.data[6].Append(Value(field.description));
+		output.data[7].Append(StringList(field.ai_context.synonyms));
 		count++;
 	}
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 unique_ptr<FunctionData> MetricsBind(ClientContext &context, TableFunctionBindInput &input,
-                                     vector<LogicalType> &return_types, vector<string> &names) {
+                                     vector<LogicalType> &return_types, vector<Identifier> &names) {
 	names = {"name", "datatype", "expression", "description", "synonyms"};
 	return_types = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR,
 	                LogicalType::LIST(LogicalType::VARCHAR)};
@@ -158,14 +158,14 @@ void MetricsFunction(ClientContext &context, TableFunctionInput &data_p, DataChu
 	idx_t count = 0;
 	while (state.offset < metrics.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &metric = metrics[state.offset++];
-		output.SetValue(0, count, Value(metric.name));
-		output.SetValue(1, count, metric.datatype.empty() ? Value(LogicalType::VARCHAR) : Value(metric.datatype));
-		output.SetValue(2, count, Value(metric.expression.sql));
-		output.SetValue(3, count, Value(metric.description));
-		output.SetValue(4, count, StringList(metric.ai_context.synonyms));
+		output.data[0].Append(Value(metric.name));
+		output.data[1].Append(metric.datatype.empty() ? Value(LogicalType::VARCHAR) : Value(metric.datatype));
+		output.data[2].Append(Value(metric.expression.sql));
+		output.data[3].Append(Value(metric.description));
+		output.data[4].Append(StringList(metric.ai_context.synonyms));
 		count++;
 	}
-	output.SetCardinality(count);
+	output.CheckCardinality(count);
 }
 
 } // namespace
