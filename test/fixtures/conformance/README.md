@@ -13,8 +13,9 @@ They are **copied in, not fetched at test time**: CI must not depend on the netw
 moves.
 
 All seven files are taken at apache/ossie commit `8dd6732da354f22ca71f16d82626a46039ecdcd9` and sit
-under a directory named for the converter that wrote them, keeping upstream's own filenames. Two of
-those names collide once the directory is dropped, which is why the directories exist.
+under a directory named for the converter that wrote them, keeping upstream's own filenames, so where
+each came from is visible in its path. (Omni's file now carries the name the old Databricks fixture had;
+the directory keeps the two from being confused in history.)
 
 | file | source in apache/ossie | loads today |
 |---|---|---|
