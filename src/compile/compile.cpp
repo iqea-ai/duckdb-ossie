@@ -7,6 +7,7 @@
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/conjunction_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/window_expression.hpp"
 #include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
@@ -14,6 +15,7 @@
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "ossie/catalog.hpp"
+#include "ossie/dialect.hpp"
 
 #include <algorithm>
 
@@ -285,6 +287,21 @@ string AggregateGrain(const Model &model, const case_insensitive_set_t &datasets
 	return candidates[0];
 }
 
+//! The first window function in `expr`, or nullptr. A window's frame and partition are written into the
+//! metric, but the rows it runs over are decided by the request's dimensions, which the model cannot know.
+const WindowExpression *FindWindow(const ParsedExpression &expr) {
+	if (expr.GetExpressionClass() == ExpressionClass::WINDOW) {
+		return &expr.Cast<WindowExpression>();
+	}
+	const WindowExpression *found = nullptr;
+	ParsedExpressionIterator::EnumerateChildren(expr, [&](const ParsedExpression &child) {
+		if (!found) {
+			found = FindWindow(child);
+		}
+	});
+	return found;
+}
+
 //! Collects the grain of every aggregate in a metric. An aggregate with no column reference, such
 //! as COUNT(*), names no dataset and is recorded separately.
 void CollectGrains(const Model &model, const ParsedExpression &expr, const string &metric_name,
@@ -386,6 +403,11 @@ Filter ResolveFilter(const Model &model, const string &request, const CompileOpt
 
 	Filter result;
 	result.expr = std::move(parsed[0]);
+	// A filter is written in the model's own expression language, so it is lowered the way an OSSIE_SQL_2026
+	// field is: NVL and DATEADD(day, ...) work, and CONCAT means what it means in a field. This comes after the
+	// policy check, which judges what the caller wrote, and before names are resolved, since the bare date part
+	// in DATEADD(day, ...) is not a name.
+	LowerOssieSql2026(result.expr, StringUtil::Format("ossie: filter \"%s\"", request));
 	ResolveFilterNames(model, result.expr, request, result.is_aggregate);
 	return result;
 }
@@ -497,6 +519,17 @@ unique_ptr<SelectStatement> Compile(const Model &model, const vector<string> &me
 			    "ossie: model \"%s\" has no metric named \"%s\".%s", model.name, metric_name,
 			    StringUtil::CandidatesErrorMessage(MetricNames(model), metric_name, "Did you mean"));
 		}
+		// Refused rather than computed: grouped by date and category, a running total ordered by date
+		// alone runs across categories, and ties on date make the order, and so the number, arbitrary.
+		auto window = FindWindow(*metric->expression.tree);
+		if (window) {
+			throw InvalidInputException(
+			    "ossie: metric \"%s\" uses the window function %s, whose result changes with the dimensions "
+			    "requested in a way the model does not define: the rows it runs over depend on the request, but "
+			    "its partition and order are fixed in the metric. Window metrics are not supported yet",
+			    metric->name, StringUtil::Upper(window->function_name));
+		}
+
 		bool metric_grainless = false;
 		CollectGrains(model, *metric->expression.tree, metric->name, grains, metric_grainless);
 		CollectDatasets(*metric->expression.tree, metric_datasets);

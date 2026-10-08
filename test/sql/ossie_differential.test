@@ -73,3 +73,71 @@ SELECT (SELECT books_sales FROM ossie_query(['books_sales']))
         FROM store_sales JOIN item ON ss_item_sk = i_item_sk);
 ----
 0.00
+
+# --- OSSIE_SQL_2026 ----------------------------------------------------------------------------------
+# The reference model with every expression relabelled OSSIE_SQL_2026 must give the same numbers as the
+# ANSI_SQL original: the lowering may only change spellings, never results. Each answer is taken from
+# the ANSI model first, then compared row for row against the OSSIE_SQL_2026 model.
+
+statement ok
+CALL ossie_load('test/fixtures/tpcds_semantic_model.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+statement ok
+CREATE TABLE ansi_brand AS SELECT * FROM ossie_query(['total_sales', 'total_profit'], ['item.i_brand']);
+
+statement ok
+CREATE TABLE ansi_state_2001 AS SELECT * FROM ossie_query(['total_sales'], ['store.s_state'], ['date_dim.d_year = 2001']);
+
+statement ok
+CREATE TABLE ansi_customer AS SELECT * FROM ossie_query(['total_sales'], ['customer.customer_full_name']);
+
+# The OSSIE_SQL_2026 model is built here from the reference model rather than kept as a second 900-line
+# file, so the two can never drift: only the dialect label changes.
+statement ok
+COPY (SELECT replace(content, '"dialect": "ANSI_SQL"', '"dialect": "OSSIE_SQL_2026"')
+      FROM read_text('test/fixtures/tpcds_semantic_model.json'))
+TO '__TEST_DIR__/tpcds_semantic_model_ossie_sql_2026.json' (FORMAT csv, HEADER false, QUOTE '');
+
+# Every expression was relabelled, and none was missed
+query II
+SELECT strpos(content, '"ANSI_SQL"'), (length(content) - length(replace(content, '"OSSIE_SQL_2026"', ''))) // 16
+FROM read_text('__TEST_DIR__/tpcds_semantic_model_ossie_sql_2026.json');
+----
+0	36
+
+statement ok
+CALL ossie_load('__TEST_DIR__/tpcds_semantic_model_ossie_sql_2026.json', rebind => MAP{'tpcds.public': 'memory.main'});
+
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM ossie_query(['total_sales', 'total_profit'], ['item.i_brand']) EXCEPT SELECT * FROM ansi_brand)
+  UNION ALL
+  (SELECT * FROM ansi_brand EXCEPT SELECT * FROM ossie_query(['total_sales', 'total_profit'], ['item.i_brand']))
+);
+----
+0
+
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM ossie_query(['total_sales'], ['store.s_state'], ['date_dim.d_year = 2001']) EXCEPT SELECT * FROM ansi_state_2001)
+  UNION ALL
+  (SELECT * FROM ansi_state_2001 EXCEPT SELECT * FROM ossie_query(['total_sales'], ['store.s_state'], ['date_dim.d_year = 2001']))
+);
+----
+0
+
+# A field defined by an expression (first || ' ' || last), not just a column
+query I
+SELECT count(*) FROM (
+  (SELECT * FROM ossie_query(['total_sales'], ['customer.customer_full_name']) EXCEPT SELECT * FROM ansi_customer)
+  UNION ALL
+  (SELECT * FROM ansi_customer EXCEPT SELECT * FROM ossie_query(['total_sales'], ['customer.customer_full_name']))
+);
+----
+0
+
+# Guard against a vacuous pass: the comparisons above must have had rows to compare
+query III
+SELECT count(*) > 100, count(*) FILTER (WHERE total_sales IS NOT NULL) > 100, (SELECT count(*) FROM ansi_customer) > 100 FROM ansi_brand;
+----
+true	true	true

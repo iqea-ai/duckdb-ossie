@@ -12,21 +12,28 @@ share the same assumptions. These files are the only ones that can.
 They are **copied in, not fetched at test time**: CI must not depend on the network, and upstream
 moves.
 
+All seven files are taken at apache/ossie commit `8dd6732da354f22ca71f16d82626a46039ecdcd9` and sit
+under a directory named for the converter that wrote them, keeping upstream's own filenames, so where
+each came from is visible in its path. (Omni's file now carries the name the old Databricks fixture had;
+the directory keeps the two from being confused in history.)
+
 | file | source in apache/ossie | loads today |
 |---|---|---|
-| `tpcds_osi.yaml` | `converters/orionbelt/tests/fixtures/` | yes |
-| `fixtureA_osi.yaml` | `converters/omni/tests/fixtures/` | yes |
-| `osi_tpcds.yaml` | `converters/gooddata/tests/fixtures/` | yes |
-| `sales.ossie.yaml` | `converters/nvidia/tests/fixtures/` | yes (its one metric is multi-grain, so queries on it are refused) |
-| `fixtureA_ossie.yaml` | `converters/databricks/tests/fixtures/` | no — carries only `DATABRICKS` expressions |
+| `orionbelt/tpcds_ossie.yaml` | `converters/orionbelt/tests/fixtures/` | yes |
+| `omni/fixtureA_ossie.yaml` | `converters/omni/tests/fixtures/` | yes |
+| `gooddata/ossie_tpcds.yaml` | `converters/gooddata/tests/fixtures/` | yes |
+| `nvidia/sales.ossie.yaml` | `converters/nvidia/tests/fixtures/` | yes (its one metric is multi-grain, so queries on it are refused) |
+| `databricks/ossie_fixtureA_ossie.yaml` | `converters/databricks/java/src/test/resources/` | no — carries only `DATABRICKS` expressions |
+| `examples/tpcds_semantic_model.yaml` | `examples/` | yes (its three window-function metrics are refused when queried) |
 
-`osi-schema.json` is the official schema, kept so the models here (and our own) can be validated
-against the format's own definition rather than against our reading of it. Upstream has since
-renamed it to `core-spec/ossie-schema.json` as part of the project-wide `osi` -> `ossie` rename; the
-local filename is left alone because these files are vendored verbatim and the `$id` inside still
-carries the old path.
+`ossie-schema.json` is the official schema from `core-spec/`, kept so the models here (and our own)
+can be validated against the format's own definition rather than against our reading of it.
 
-Four of five load. The one refusal is correct: that model carries only `DATABRICKS` expressions, so
+All seven are in the flat document shape that Ossie 0.2.0.dev0 requires: one model at the root, no
+`semantic_model` array. When upstream changes them again, re-vendor all of them from one commit and
+update that commit here and in `NOTICE`.
+
+Five of six models load. The one refusal is correct: that model carries only `DATABRICKS` expressions, so
 this extension genuinely cannot execute it.
 
 The gooddata and nvidia models were refused until the declared-field requirements were removed from

@@ -55,7 +55,8 @@ the number it receives, so a plausible wrong answer is worse than an error. Ever
 emit; quoting and precedence come from DuckDB's printer.
 
 **Fail at load time, not query time.** Malformed expressions, query-valued `source:`, dangling
-relationship endpoints and non-`ANSI_SQL`-only expressions are all `ossie_load` errors.
+relationship endpoints and expressions with neither an `OSSIE_SQL_2026` nor an `ANSI_SQL` variant are
+all `ossie_load` errors.
 
 **Error text is part of the interface.** An agent reads a refusal and retries, so messages name the
 offending object and tests assert on the message, not merely that something threw.

@@ -21,6 +21,14 @@ CALL ossie_load('/does/not/exist.json');
 ----
 IO Error
 
+# Ossie 0.2.0.dev0 removed the `semantic_model` array: a document is one model at its root. An old
+# file is refused at load with the migration spelled out, so an agent or a person can fix it from
+# the message alone.
+statement error
+CALL ossie_load('test/fixtures/invalid/semantic_model_wrapper.json');
+----
+this document wraps its model in a 'semantic_model' array, which Ossie 0.2.0.dev0 removed. Each document now holds one model at its root: move the model's properties (name, datasets, relationships, metrics, ...) to the top level and delete 'semantic_model'.
+
 # validate_sources is off by default, so a model loads with no local tables at all.
 statement ok
 CREATE TABLE store_sales(a INT);

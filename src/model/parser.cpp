@@ -1,5 +1,7 @@
 #include "ossie/parser.hpp"
 
+#include "ossie/dialect.hpp"
+
 #include "ossie/graph.hpp"
 #include "ossie/validate.hpp"
 #include "ossie/yaml.hpp"
@@ -144,9 +146,10 @@ AIContext ParseAIContext(yyjson_val *parent, const string &context) {
 	return result;
 }
 
-//! Ossie's Dialect enum is {ANSI_SQL, SNOWFLAKE, MDX, TABLEAU, DATABRICKS, MAQL, BIGQUERY}
-//! There is no DuckDB member (for now), so we can only execute ANSI_SQL
-const char *const EXECUTABLE_DIALECT = "ANSI_SQL";
+//! Ossie's Dialect enum names many engines and no DuckDB member. Two are executable here: the spec's own
+//! OSSIE_SQL_2026, lowered to DuckDB in dialect.cpp, and ANSI_SQL, which DuckDB reads as written. When an
+//! expression offers both, OSSIE_SQL_2026 wins, because the spec defines what it means.
+const char *const EXECUTABLE_DIALECTS[] = {OSSIE_SQL_2026, ANSI_SQL};
 
 ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) {
 	auto expression_obj = Member(parent, "expression");
@@ -169,17 +172,18 @@ ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) 
 		variants.emplace_back(dialect, sql);
 	}
 
-	for (auto &variant : variants) {
-		if (StringUtil::CIEquals(variant.first, EXECUTABLE_DIALECT)) {
-			result.dialect = variant.first;
-			result.sql = variant.second;
-			break;
+	for (auto executable : EXECUTABLE_DIALECTS) {
+		for (auto &variant : variants) {
+			if (result.dialect.empty() && StringUtil::CIEquals(variant.first, executable)) {
+				result.dialect = executable;
+				result.sql = variant.second;
+			}
 		}
 	}
 
 	if (result.dialect.empty()) {
 		throw InvalidInputException("ossie_load: %s has no expression in a dialect this extension can "
-		                            "execute (found: %s; expected ANSI_SQL).",
+		                            "execute (found: %s; expected OSSIE_SQL_2026 or ANSI_SQL).",
 		                            context, StringUtil::Join(result.available_dialects, ", "));
 	}
 
@@ -191,6 +195,9 @@ ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) 
 			                            context, result.sql, to_string(parsed.size()));
 		}
 		result.tree = std::move(parsed[0]);
+		if (result.dialect == OSSIE_SQL_2026) {
+			LowerOssieSql2026(result.tree, "ossie_load: " + context);
+		}
 	} catch (const ParserException &ex) {
 		throw InvalidInputException("ossie_load: %s has an unparseable expression '%s': %s", context, result.sql,
 		                            ErrorData(ex).RawMessage());
@@ -436,35 +443,23 @@ Model ParseModel(const string &json_text, const RebindMap &rebind) {
 		throw InvalidInputException("ossie_load: the top level of the document must be a JSON object");
 	}
 
+	// Ossie 0.2.0.dev0 puts exactly one model at the root of each document. Earlier drafts wrapped
+	// models in a `semantic_model` array; the spec removed it rather than deprecating it, so an old
+	// file is refused with the migration spelled out instead of being read under rules that no
+	// longer exist.
+	if (Member(root, "semantic_model")) {
+		throw InvalidInputException(
+		    "ossie_load: this document wraps its model in a 'semantic_model' array, which Ossie 0.2.0.dev0 "
+		    "removed. Each document now holds one model at its root: move the model's properties (name, "
+		    "datasets, relationships, metrics, ...) to the top level and delete 'semantic_model'. A file "
+		    "holding several models becomes one file per model.");
+	}
+
 	Model result;
 	result.spec_version = OptionalString(root, "version");
 
-	auto models = Member(root, "semantic_model");
-	if (!models || !yyjson_is_arr(models)) {
-		throw InvalidInputException("ossie_load: document has no 'semantic_model' array");
-	}
-	auto model_count = yyjson_arr_size(models);
-	if (model_count == 0) {
-		throw InvalidInputException("ossie_load: 'semantic_model' is empty");
-	}
-	if (model_count > 1) {
-		// The format allows N models; ossie_query addresses metrics by bare name and can only mean
-		// one. Merging them would let two datasets of the same name bind to different physical
-		// tables and return an ambiguous result.
-		vector<string> names;
-		size_t idx, max;
-		yyjson_val *item;
-		yyjson_arr_foreach(models, idx, max, item) {
-			names.push_back(OptionalString(item, "name"));
-		}
-		throw InvalidInputException("ossie_load: file contains %s semantic models (%s), but metrics are "
-		                            "addressed by bare name with no way to say which model is meant. "
-		                            "Split the file, or load one model per call.",
-		                            to_string(model_count), StringUtil::Join(names, ", "));
-	}
-
-	auto model_obj = yyjson_arr_get(models, 0);
-	result.name = RequiredString(model_obj, "name", "semantic_model");
+	auto model_obj = root;
+	result.name = RequiredString(model_obj, "name", "the semantic model");
 	auto context = StringUtil::Format("semantic model \"%s\"", result.name);
 	result.description = OptionalString(model_obj, "description");
 	result.ai_context = ParseAIContext(model_obj, context);

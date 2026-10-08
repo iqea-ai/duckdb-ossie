@@ -27,17 +27,19 @@ implementation that answers a question rather than translating one.
 Claims about a file format should be checkable, so:
 
 - Models are validated against the format's own [`core-spec/ossie-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/ossie-schema.json)
-- The suite includes five models published by *other* Ossie implementers — Databricks, GoodData,
-  NVIDIA, Omni and OrionBelt — vendored verbatim from `apache/ossie`. Four load and answer queries.
-  The fifth carries only `DATABRICKS` expressions, which this extension does not execute
+- The suite includes six models from `apache/ossie`, vendored verbatim: five published by *other*
+  Ossie implementers — Databricks, GoodData, NVIDIA, Omni and OrionBelt — and the spec's own TPC-DS
+  example. Five load and answer queries. The Databricks model carries only `DATABRICKS`
+  expressions, which this extension does not execute
 - Generated SQL is diffed against hand-written TPC-DS equivalents with symmetric `EXCEPT` over
   `dsdgen(sf = 0.01)` data, so correctness is measured against the numbers rather than against our
   own output. This currently covers `total_sales` and `books_sales`. The remaining metrics are
   exercised by the golden-SQL, grain or vocabulary tests, none of which can catch a wrong *number*
 
-What is not yet supported is listed in [docs/limitations.md](docs/limitations.md): `ANSI_SQL`
-expressions only, one semantic model per file, table-backed sources only, and metrics that span
-more than one grain are refused rather than answered wrongly.
+Models use the flat document shape of Ossie 0.2.0.dev0, one model per file, with expressions in
+`OSSIE_SQL_2026` (the spec's own expression language) or `ANSI_SQL`. What is not yet supported is
+listed in [docs/limitations.md](docs/limitations.md): table-backed sources only, and metrics that
+span more than one grain or use a window function are refused rather than answered wrongly.
 
 ```sql
 CALL ossie_load('model.json', rebind => MAP{'tpcds.public': 'tpcds.main'});
