@@ -9,7 +9,7 @@ DuckDB. It reads Ossie semantic model files — YAML or JSON — and answers sem
 the tables in DuckDB, from a single binary, with no infrastructure. This extension also exposes the
 semantic layer via MCP.
 
-**This extension works with DuckDB v1.5.5.**
+**This extension works with DuckDB v1.5.6.**
 
 Ossie is a vendor-neutral file format for semantic models: `datasets` bound to physical tables,
 `fields`, declared `relationships`, and `metrics` written as aggregate expressions. It describes
@@ -128,7 +128,7 @@ git submodule update --init --recursive
 make
 ```
 
-Submodules are pinned by recorded commit (DuckDB `v1.5.5`). DuckDB's parser and planner internals
+Submodules are pinned by recorded commit (DuckDB `v1.5.6`). DuckDB's parser and planner internals
 are not a stable API, so the pin is deliberate and upgrades are expected to need work. The first
 build compiles DuckDB from source and takes a while; later builds are incremental.
 

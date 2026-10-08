@@ -17,10 +17,10 @@ permissions:
 jobs:
   duckdb-stable-build:
     name: Build extension binaries
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5.5
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5.6
     with:
-      duckdb_version: v1.5.5
-      ci_tools_version: v1.5.5
+      duckdb_version: v1.5.6
+      ci_tools_version: v1.5.6
       extension_name: ossie
 
   # Drives examples/server.sql over MCP with the extension THIS run built, loaded from its file into a
@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: ossie-v1.5.5-extension-linux_amd64
+          name: ossie-v1.5.6-extension-linux_amd64
           path: downloaded
 
       # A stock CLI and network rather than this repo's build tree: static linking there is exactly
@@ -54,7 +54,7 @@ jobs:
       - name: Install the DuckDB CLI
         env:
           # Must match duckdb_version in duckdb-stable-build, minus the leading v.
-          DUCKDB_VERSION: 1.5.5
+          DUCKDB_VERSION: 1.5.6
         run: |
           curl -fsSL https://install.duckdb.org | sh
           echo "$HOME/.duckdb/cli/$DUCKDB_VERSION" >> "$GITHUB_PATH"
@@ -92,7 +92,7 @@ jobs:
       # Download it somewhere neutral and put it where the check script reads $EXT.
       - uses: actions/download-artifact@v4
         with:
-          name: ossie-v1.5.5-extension-${{ matrix.arch }}
+          name: ossie-v1.5.6-extension-${{ matrix.arch }}
           path: downloaded
 
       - name: Place the artifact where the check script reads it
@@ -106,7 +106,7 @@ jobs:
       - name: Install the stock DuckDB CLI
         env:
           # Must match duckdb_version in duckdb-stable-build, minus the leading v.
-          DUCKDB_VERSION: 1.5.5
+          DUCKDB_VERSION: 1.5.6
         run: |
           curl -fsSL https://install.duckdb.org | sh
           echo "$HOME/.duckdb/cli/$DUCKDB_VERSION" >> "$GITHUB_PATH"
@@ -157,9 +157,9 @@ jobs:
 
   code-quality-check:
     name: Code Quality Check
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5.5
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5.6
     with:
-      duckdb_version: v1.5.5
-      ci_tools_version: v1.5.5
+      duckdb_version: v1.5.6
+      ci_tools_version: v1.5.6
       extension_name: ossie
       format_checks: 'format;tidy'
