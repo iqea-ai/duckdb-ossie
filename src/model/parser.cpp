@@ -1,5 +1,7 @@
 #include "ossie/parser.hpp"
 
+#include "ossie/dialect.hpp"
+
 #include "ossie/graph.hpp"
 #include "ossie/validate.hpp"
 #include "ossie/yaml.hpp"
@@ -144,9 +146,10 @@ AIContext ParseAIContext(yyjson_val *parent, const string &context) {
 	return result;
 }
 
-//! Ossie's Dialect enum is {ANSI_SQL, SNOWFLAKE, MDX, TABLEAU, DATABRICKS, MAQL, BIGQUERY}
-//! There is no DuckDB member (for now), so we can only execute ANSI_SQL
-const char *const EXECUTABLE_DIALECT = "ANSI_SQL";
+//! Ossie's Dialect enum names many engines and no DuckDB member. Two are executable here: the spec's own
+//! OSSIE_SQL_2026, lowered to DuckDB in dialect.cpp, and ANSI_SQL, which DuckDB reads as written. When an
+//! expression offers both, OSSIE_SQL_2026 wins, because the spec defines what it means.
+const char *const EXECUTABLE_DIALECTS[] = {OSSIE_SQL_2026, ANSI_SQL};
 
 ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) {
 	auto expression_obj = Member(parent, "expression");
@@ -169,17 +172,18 @@ ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) 
 		variants.emplace_back(dialect, sql);
 	}
 
-	for (auto &variant : variants) {
-		if (StringUtil::CIEquals(variant.first, EXECUTABLE_DIALECT)) {
-			result.dialect = variant.first;
-			result.sql = variant.second;
-			break;
+	for (auto executable : EXECUTABLE_DIALECTS) {
+		for (auto &variant : variants) {
+			if (result.dialect.empty() && StringUtil::CIEquals(variant.first, executable)) {
+				result.dialect = executable;
+				result.sql = variant.second;
+			}
 		}
 	}
 
 	if (result.dialect.empty()) {
 		throw InvalidInputException("ossie_load: %s has no expression in a dialect this extension can "
-		                            "execute (found: %s; expected ANSI_SQL).",
+		                            "execute (found: %s; expected OSSIE_SQL_2026 or ANSI_SQL).",
 		                            context, StringUtil::Join(result.available_dialects, ", "));
 	}
 
@@ -191,6 +195,9 @@ ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) 
 			                            context, result.sql, to_string(parsed.size()));
 		}
 		result.tree = std::move(parsed[0]);
+		if (result.dialect == OSSIE_SQL_2026) {
+			LowerOssieSql2026(result.tree, context);
+		}
 	} catch (const ParserException &ex) {
 		throw InvalidInputException("ossie_load: %s has an unparseable expression '%s': %s", context, result.sql,
 		                            ErrorData(ex).RawMessage());

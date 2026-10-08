@@ -1,0 +1,159 @@
+# name: test/sql/ossie_sql_2026.test
+# description: OSSIE_SQL_2026, the spec's own expression language, lowered to DuckDB with its meaning intact
+# group: [sql]
+
+# The rows are chosen for the edge cases: a NULL region, a NULL discount, a zero amount, a month end and
+# the leap day. Every expected value below comes from the language's definition, not from running it.
+
+require ossie
+
+statement ok
+CREATE TABLE orders(id INT, region VARCHAR, amount DECIMAL(10,2), discount DECIMAL(10,2), code VARCHAR,
+                    created DATE, shipped DATE);
+
+statement ok
+INSERT INTO orders VALUES
+  (1, 'east', 100.00, 10.00, 'A-1Z', DATE '2024-01-31', DATE '2024-02-02'),
+  (2, NULL,     0.00,  NULL, 'B-2',  DATE '2024-02-15', NULL),
+  (3, 'west',  50.00, 60.00, 'A3',   DATE '2024-02-29', DATE '2024-03-31');
+
+query TTIIII
+CALL ossie_load('test/fixtures/ossie_sql_2026_model.json');
+----
+ossie_sql_2026	0.2.0.dev0	1	21	0	3
+
+# --- functions DuckDB spells differently or lacks ---------------------------------------------------
+
+query IT
+SELECT "o.id", "o.region_or_unknown" FROM ossie_query(['order_count'], ['o.id', 'o.region_or_unknown']) ORDER BY 1;
+----
+1	east
+2	unknown
+3	west
+
+query IT
+SELECT "o.id", "o.has_discount" FROM ossie_query(['order_count'], ['o.id', 'o.has_discount']) ORDER BY 1;
+----
+1	yes
+2	no
+3	yes
+
+query IT
+SELECT "o.id", "o.discount_state" FROM ossie_query(['order_count'], ['o.id', 'o.discount_state']) ORDER BY 1;
+----
+1	some
+2	none
+3	some
+
+query IRR
+SELECT "o.id", "o.discount_or_zero", "o.amount_or_null"
+FROM ossie_query(['order_count'], ['o.id', 'o.discount_or_zero', 'o.amount_or_null']) ORDER BY 1;
+----
+1	10.00	100.00
+2	0.00	NULL
+3	60.00	50.00
+
+# CHARINDEX(substr, str) takes its arguments in the opposite order to DuckDB's strpos, and is 0 when absent
+query IITT
+SELECT "o.id", "o.dash_position", "o.starts_with_a", "o.ends_with_z"
+FROM ossie_query(['order_count'], ['o.id', 'o.dash_position', 'o.starts_with_a', 'o.ends_with_z']) ORDER BY 1;
+----
+1	2	true	true
+2	2	false	false
+3	0	true	false
+
+# The date part is written bare, as the language does: DATEADD(day, 30, created).
+query ITTI
+SELECT "o.id", "o.created_month", "o.due", "o.days_to_ship"
+FROM ossie_query(['order_count'], ['o.id', 'o.created_month', 'o.due', 'o.days_to_ship']) ORDER BY 1;
+----
+1	2024-01-01 00:00:00	2024-03-01 00:00:00	2
+2	2024-02-01 00:00:00	2024-03-16 00:00:00	NULL
+3	2024-02-01 00:00:00	2024-03-30 00:00:00	31
+
+# A month added to January 31 lands on the leap day.
+query IT
+SELECT "o.id", "o.month_later" FROM ossie_query(['order_count'], ['o.id', 'o.month_later']) ORDER BY 1;
+----
+1	2024-02-29 00:00:00
+2	2024-03-15 00:00:00
+3	2024-03-29 00:00:00
+
+# KNOWN DUCKDB DEFECT, pinned so that an upgrade which fixes it fails here and docs/limitations.md gets
+# updated. DuckDB's optimizer folds INTERVAL 30 DAY and INTERVAL 1 MONTH to constants, judges them equal
+# (it compares intervals with a month normalised to 30 days), and merges the two expressions, so whichever
+# comes first wins. Row 1 should read 2024-03-01 and 2024-02-29. Plain DuckDB does the same with no
+# extension loaded; disabling the common_subexpressions optimizer gives the right answer. This is wrong
+# for ANSI_SQL models too, and is listed in docs/limitations.md.
+query IT
+SELECT "o.due", "o.month_later" FROM ossie_query(['order_count'], ['o.id', 'o.due', 'o.month_later']) WHERE "o.id" = 1;
+----
+2024-03-01 00:00:00	2024-03-01 00:00:00
+
+query ITT
+SELECT "o.id", "o.launch", "o.launch_ts" FROM ossie_query(['order_count'], ['o.id', 'o.launch', 'o.launch_ts']) ORDER BY 1;
+----
+1	2024-01-15	2024-01-15 10:30:00
+2	2024-01-15	2024-01-15 10:30:00
+3	2024-01-15	2024-01-15 10:30:00
+
+# --- same name, different result in DuckDB: NULL in gives NULL out ------------------------------------
+# DuckDB's concat, greatest and least skip NULL arguments. The language's `||` and standard SQL do not,
+# so neither does CONCAT, GREATEST or LEAST here.
+
+query IT
+SELECT "o.id", "o.label" FROM ossie_query(['order_count'], ['o.id', 'o.label']) ORDER BY 1;
+----
+1	east-A-1Z
+2	NULL
+3	west-A3
+
+query IRR
+SELECT "o.id", "o.larger", "o.smaller" FROM ossie_query(['order_count'], ['o.id', 'o.larger', 'o.smaller']) ORDER BY 1;
+----
+1	100.00	10.00
+2	NULL	NULL
+3	60.00	50.00
+
+# --- choosing between dialects ------------------------------------------------------------------------
+# An expression carrying both runs the OSSIE_SQL_2026 variant: the spec defines what it means.
+
+query T
+SELECT DISTINCT "o.preferred" FROM ossie_query(['order_count'], ['o.preferred']);
+----
+ossie_sql_2026
+
+# The same aggregate written once in each dialect gives the same number
+query RR
+SELECT * FROM ossie_query(['discount_total_ossie', 'discount_total_ansi']);
+----
+70.00	70.00
+
+# What the lowering emits: DuckDB's own trees, printed by DuckDB
+query T
+SELECT ossie_compile(['order_count'], ['o.discount_state', 'o.dash_position'], []);
+----
+SELECT CASE  WHEN ((o.discount IS NULL)) THEN ('none') ELSE 'some' END AS "o.discount_state", strpos(o.code, '-') AS "o.dash_position", count(o.id) AS order_count FROM memory.main.orders AS o GROUP BY CASE  WHEN ((o.discount IS NULL)) THEN ('none') ELSE 'some' END, strpos(o.code, '-')
+
+# --- refused at load, naming the field --------------------------------------------------------------------
+
+# Engines disagree on whether REGEXP_LIKE must match the whole string, and the language does not say
+statement error
+CALL ossie_load('test/fixtures/invalid/ossie_sql_2026_regexp_like.json');
+----
+field "o.f" calls REGEXP_LIKE, whose result OSSIE_SQL_2026 does not define
+
+statement error
+CALL ossie_load('test/fixtures/invalid/ossie_sql_2026_format_model.json');
+----
+field "o.f" calls TO_DATE with a format argument
+
+statement error
+CALL ossie_load('test/fixtures/invalid/ossie_sql_2026_date_part.json');
+----
+field "o.f" calls DATEADD with date part fortnight; OSSIE_SQL_2026 defines year, quarter, month, week, day, hour, minute and second
+
+statement error
+CALL ossie_load('test/fixtures/invalid/ossie_sql_2026_arity.json');
+----
+field "o.f" calls NVL with 3 argument(s); OSSIE_SQL_2026 defines it as NVL(expr, default)

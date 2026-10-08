@@ -26,6 +26,7 @@ set(EXTENSION_SOURCES
     src/model/validate.cpp
     src/model/graph.cpp
     src/model/catalog.cpp
+    src/model/dialect.cpp
     src/model/yaml.cpp
     src/compile/compile.cpp
     src/functions/load.cpp
