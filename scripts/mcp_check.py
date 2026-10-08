@@ -12,17 +12,40 @@ for anyone installing from the registry; and duckdb_mcp publishes generic query/
 alongside ours, which falsified a security claim in the README.
 
 Usage:  python3 scripts/mcp_check.py        (run from the repository root)
+        OSSIE_EXTENSION=path/to/ossie.duckdb_extension python3 scripts/mcp_check.py
 Exit:   0 all checks passed, 1 otherwise
+
+Which ossie is tested: by default the published one, because server.sql installs it from the community
+registry exactly as a user's copy does. With OSSIE_EXTENSION set, that install is swapped for a LOAD of the
+named file, so CI can test what it just built before the registry has it. Every other line of server.sql,
+including the security flags, runs unchanged.
 """
-import json, os, shutil, subprocess, sys, tempfile, time
+import atexit, json, os, shutil, subprocess, sys, tempfile, time
 
 if shutil.which("duckdb") is None:
     print("duckdb is not on PATH. Install the CLI, or run this from an environment that has it.")
     sys.exit(2)
 
+SERVER = "examples/server.sql"
+REGISTRY_INSTALL = "INSTALL ossie FROM community;\nLOAD ossie;\n"
+cli, server_path = ["duckdb"], SERVER
+extension = os.environ.get("OSSIE_EXTENSION")
+if extension:
+    text = open(SERVER).read()
+    if REGISTRY_INSTALL not in text:
+        print(f"{SERVER} no longer installs ossie with the two lines this script swaps out:\n{REGISTRY_INSTALL}")
+        sys.exit(2)
+    text = text.replace(REGISTRY_INSTALL, f"LOAD '{os.path.abspath(extension)}';\n")
+    fd, server_path = tempfile.mkstemp(suffix=".sql", prefix="ossie_mcp_server_")
+    os.write(fd, text.encode()); os.close(fd)
+    atexit.register(os.unlink, server_path)  # every exit path, including a failed handshake
+    # A file this CI run just built is genuinely unsigned; the registry's builds are signed and need no flag.
+    cli = ["duckdb", "-unsigned"]
+    print(f"testing the built extension {extension}, not the registry's")
+
 try:
     proc = subprocess.Popen(
-        ["duckdb", "-init", "examples/server.sql"],
+        cli + ["-init", server_path],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, bufsize=1)
 except OSError as exc:
@@ -57,6 +80,16 @@ send({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
 r = read()
 check("initialize handshake", bool(r and "result" in r),
       (r or {}).get("result",{}).get("serverInfo",{}).get("name",""))
+if not (r and "result" in r):
+    # The server never answered, usually because a line of the server script failed and DuckDB exited.
+    # Without its stderr the only symptom is a broken pipe on the next write.
+    proc.terminate()
+    try:
+        _, err = proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill(); _, err = proc.communicate()
+    print("server stderr:\n" + (err or "(empty)").strip()[-2000:])
+    sys.exit(1)
 
 send({"jsonrpc":"2.0","method":"notifications/initialized"})
 

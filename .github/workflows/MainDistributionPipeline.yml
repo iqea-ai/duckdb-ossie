@@ -23,8 +23,13 @@ jobs:
       ci_tools_version: v1.5.5
       extension_name: ossie
 
+  # Drives examples/server.sql over MCP with the extension THIS run built, loaded from its file into a
+  # stock CLI. It used to install ossie from the community registry, which made every merge wait on
+  # DuckDB publishing the very version under review: the registry never has the code a PR introduces.
+  # The registry path is still tested, after publishing, by RegistryCheck.yml.
   mcp-round-trip:
     name: MCP round trip
+    needs: duckdb-stable-build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -33,11 +38,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      # The check drives examples/server.sql, which installs ossie and duckdb_mcp from the community
-      # registry, so it needs a stock CLI and network rather than this repo's build tree. Using the
-      # build tree would defeat the purpose: static linking there is exactly what hid the bug this
-      # job exists to catch, where server.sql never loaded the extension it demonstrates and failed
-      # for everyone installing from the registry.
+      - uses: actions/download-artifact@v4
+        with:
+          name: ossie-v1.5.5-extension-linux_amd64
+          path: downloaded
+
+      # A stock CLI and network rather than this repo's build tree: static linking there is exactly
+      # what hid the bug this job exists to catch, where server.sql never loaded the extension it
+      # demonstrates. duckdb_mcp still comes from the registry, as it does for a user.
       # Pinned to the DuckDB version the extension is built against, not to whatever
       # install.duckdb.org calls latest. This job tests our artifact in the CLI it targets; following
       # "latest" made it test the world's release schedule instead, and it went red on every DuckDB
@@ -51,7 +59,9 @@ jobs:
           curl -fsSL https://install.duckdb.org | sh
           echo "$HOME/.duckdb/cli/$DUCKDB_VERSION" >> "$GITHUB_PATH"
 
-      - name: Speak MCP to the published server
+      - name: Speak MCP to the server, running the built extension
+        env:
+          OSSIE_EXTENSION: downloaded/ossie.duckdb_extension
         run: python3 scripts/mcp_check.py
 
   # Load the file we actually ship.
