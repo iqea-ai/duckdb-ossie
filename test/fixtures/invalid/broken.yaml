@@ -1,4 +1,3 @@
 version: "0.2.0.dev0"
-semantic_model:
-  - name: broken
-   bad_indent: [unclosed
+name: broken
+ bad_indent: [unclosed

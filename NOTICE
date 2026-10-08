@@ -22,12 +22,14 @@ Apache Ossie semantic model fixtures
   (incubating) repository and are used as test data only. They are not part of the built
   extension and are not distributed in the released binary.
 
-    test/fixtures/conformance/osi-schema.json        from core-spec/
-    test/fixtures/conformance/tpcds_osi.yaml         from converters/orionbelt/tests/fixtures/
-    test/fixtures/conformance/osi_tpcds.yaml         from converters/gooddata/tests/fixtures/
-    test/fixtures/conformance/fixtureA_osi.yaml      from converters/omni/tests/fixtures/
-    test/fixtures/conformance/fixtureA_ossie.yaml    from converters/databricks/tests/fixtures/
-    test/fixtures/conformance/sales.ossie.yaml       from converters/nvidia/tests/fixtures/
+  All are taken at apache/ossie commit 8dd6732da354f22ca71f16d82626a46039ecdcd9.
+
+    test/fixtures/conformance/ossie-schema.json                     from core-spec/
+    test/fixtures/conformance/orionbelt/tpcds_ossie.yaml            from converters/orionbelt/tests/fixtures/
+    test/fixtures/conformance/gooddata/ossie_tpcds.yaml             from converters/gooddata/tests/fixtures/
+    test/fixtures/conformance/omni/fixtureA_ossie.yaml              from converters/omni/tests/fixtures/
+    test/fixtures/conformance/databricks/ossie_fixtureA_ossie.yaml  from converters/databricks/java/src/test/resources/
+    test/fixtures/conformance/nvidia/sales.ossie.yaml               from converters/nvidia/tests/fixtures/
 
   Copyright The Apache Software Foundation.
   Licensed under the Apache License, Version 2.0.

@@ -436,35 +436,23 @@ Model ParseModel(const string &json_text, const RebindMap &rebind) {
 		throw InvalidInputException("ossie_load: the top level of the document must be a JSON object");
 	}
 
+	// Ossie 0.2.0.dev0 puts exactly one model at the root of each document. Earlier drafts wrapped
+	// models in a `semantic_model` array; the spec removed it rather than deprecating it, so an old
+	// file is refused with the migration spelled out instead of being read under rules that no
+	// longer exist.
+	if (Member(root, "semantic_model")) {
+		throw InvalidInputException(
+		    "ossie_load: this document wraps its model in a 'semantic_model' array, which Ossie 0.2.0.dev0 "
+		    "removed. Each document now holds one model at its root: move the model's properties (name, "
+		    "datasets, relationships, metrics, ...) to the top level and delete 'semantic_model'. A file "
+		    "holding several models becomes one file per model.");
+	}
+
 	Model result;
 	result.spec_version = OptionalString(root, "version");
 
-	auto models = Member(root, "semantic_model");
-	if (!models || !yyjson_is_arr(models)) {
-		throw InvalidInputException("ossie_load: document has no 'semantic_model' array");
-	}
-	auto model_count = yyjson_arr_size(models);
-	if (model_count == 0) {
-		throw InvalidInputException("ossie_load: 'semantic_model' is empty");
-	}
-	if (model_count > 1) {
-		// The format allows N models; ossie_query addresses metrics by bare name and can only mean
-		// one. Merging them would let two datasets of the same name bind to different physical
-		// tables and return an ambiguous result.
-		vector<string> names;
-		size_t idx, max;
-		yyjson_val *item;
-		yyjson_arr_foreach(models, idx, max, item) {
-			names.push_back(OptionalString(item, "name"));
-		}
-		throw InvalidInputException("ossie_load: file contains %s semantic models (%s), but metrics are "
-		                            "addressed by bare name with no way to say which model is meant. "
-		                            "Split the file, or load one model per call.",
-		                            to_string(model_count), StringUtil::Join(names, ", "));
-	}
-
-	auto model_obj = yyjson_arr_get(models, 0);
-	result.name = RequiredString(model_obj, "name", "semantic_model");
+	auto model_obj = root;
+	result.name = RequiredString(model_obj, "name", "the semantic model");
 	auto context = StringUtil::Format("semantic model \"%s\"", result.name);
 	result.description = OptionalString(model_obj, "description");
 	result.ai_context = ParseAIContext(model_obj, context);

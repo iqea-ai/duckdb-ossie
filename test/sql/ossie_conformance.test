@@ -12,19 +12,19 @@ require ossie
 # --- loads: YAML is read natively, no conversion step -------------------------------------------
 
 query TTIIII
-CALL ossie_load('test/fixtures/conformance/tpcds_osi.yaml');
+CALL ossie_load('test/fixtures/conformance/orionbelt/tpcds_ossie.yaml');
 ----
-tpcds_retail_model	0.1.1	5	31	4	5
+tpcds_retail_model	0.2.0.dev0	5	31	4	5
 
 query TTIIII
-CALL ossie_load('test/fixtures/conformance/fixtureA_osi.yaml');
+CALL ossie_load('test/fixtures/conformance/omni/fixtureA_ossie.yaml');
 ----
 sales	0.2.0.dev0	2	6	1	2
 
 # A YAML model compiles the same as a JSON one -- serialization is converted before parsing, so
 # nothing downstream can tell the difference.
 statement ok
-CALL ossie_load('test/fixtures/conformance/tpcds_osi.yaml', rebind => MAP{'tpcds.public': 'tpcds.main'});
+CALL ossie_load('test/fixtures/conformance/orionbelt/tpcds_ossie.yaml', rebind => MAP{'tpcds.public': 'tpcds.main'});
 
 query T
 SELECT ossie_compile(['total_sales'], [], []);
@@ -34,7 +34,7 @@ SELECT sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_
 # --- correct refusal: no expression this extension can execute ----------------------------------
 
 statement error
-CALL ossie_load('test/fixtures/conformance/fixtureA_ossie.yaml');
+CALL ossie_load('test/fixtures/conformance/databricks/ossie_fixtureA_ossie.yaml');
 ----
 no expression in a dialect this extension can execute
 
@@ -45,7 +45,7 @@ no expression in a dialect this extension can execute
 
 # gooddata's model: a dimensional model with no measures at all, which is legal.
 query TTIIII
-CALL ossie_load('test/fixtures/conformance/osi_tpcds.yaml');
+CALL ossie_load('test/fixtures/conformance/gooddata/ossie_tpcds.yaml');
 ----
 tpcds_model	0.2.0.dev0	5	20	4	0
 
@@ -54,7 +54,7 @@ tpcds_model	0.2.0.dev0	5	20	4	0
 # are separate questions, and this is what it looks like when the first succeeds and the second
 # correctly does not.
 query TTIIII
-CALL ossie_load('test/fixtures/conformance/sales.ossie.yaml');
+CALL ossie_load('test/fixtures/conformance/nvidia/sales.ossie.yaml');
 ----
 sales	0.2.0.dev0	2	6	1	1
 

@@ -170,12 +170,12 @@ python3 - "$NEST" <<'PY'
 import json,sys
 def f(n,e=None): return {"name":n,"datatype":"String",
   "expression":{"dialects":[{"dialect":"ANSI_SQL","expression":e or n}]}}
-json.dump({"version":"0.2.0.dev0","semantic_model":[{"name":"nested","datasets":[
+json.dump({"version":"0.2.0.dev0","name":"nested","datasets":[
  {"name":"nf","source":"tpcds.main.nf","fields":[f("k1"),f("amt")]},
  {"name":"nd","source":"tpcds.main.nd","primary_key":["k1"],
   "fields":[f("k1"),f("label"),f("mid","label || 'M'"),f("outer_f","mid || 'O'")]}],
  "relationships":[{"name":"r","from":"nf","to":"nd","from_columns":["k1"],"to_columns":["k1"]}],
- "metrics":[{"name":"total","expression":{"dialects":[{"dialect":"ANSI_SQL","expression":"SUM(nf.amt)"}]}}]}]},
+ "metrics":[{"name":"total","expression":{"dialects":[{"dialect":"ANSI_SQL","expression":"SUM(nf.amt)"}]}}]},
  open(sys.argv[1],"w"))
 PY
 NOUT="$(q "CREATE OR REPLACE TABLE tpcds.main.nf(k1 INT, amt DECIMAL(10,2));
