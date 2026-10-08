@@ -11,9 +11,14 @@ pins). The DuckDB version each release targets is noted separately.
 
 ## [Unreleased]
 
-Targets DuckDB **v1.5.6**.
+Targets DuckDB **v1.5.6**. Version 0.2.0: catches up with two changes to the Ossie spec, one of them
+breaking, that 0.1.1 predates.
 
 ### Changed
+- **Breaking: models use the flat document shape of Ossie 0.2.0.dev0.** Each document now holds one
+  model at its root (apache/ossie cc919e9). The `semantic_model` array is no longer read: a document
+  that still has it is refused at load with the migration spelled out. 0.1.1 could read none of the
+  models upstream now publishes, including its own TPC-DS example
 - Built against DuckDB v1.5.6 and extension-ci-tools v1.5.6. No source change was needed: every
   changed header this extension includes came from DuckDB's additive "2.0 API spellings" backport,
   and the test suite passes unchanged (210 assertions in 12 test cases)
@@ -24,6 +29,28 @@ Targets DuckDB **v1.5.6**.
 - CI's MCP round trip runs the extension that CI run built, not the copy in the community registry,
   which only ever serves code that has already merged. Installing from the registry is checked by a
   separate daily workflow that cannot block a merge
+
+### Added
+- **`OSSIE_SQL_2026`, the spec's own expression language** (apache/ossie be2c73f), executed alongside
+  `ANSI_SQL`; an expression carrying both runs the `OSSIE_SQL_2026` variant. Functions DuckDB spells
+  differently or lacks (`NVL`, `IFF`, `NVL2`, `ZEROIFNULL`, `NULLIFZERO`, `CHARINDEX`, `STARTSWITH`,
+  `ENDSWITH`, `TO_DATE`, `TO_TIMESTAMP`, `TIMESTAMP_NTZ`, and `DATEADD`/`DATEDIFF`/`DATE_TRUNC` with a
+  bare date part) are lowered to equivalent DuckDB trees at load. `CONCAT`, `GREATEST` and `LEAST`
+  return NULL when any argument is NULL, as the language's `||` does, unlike DuckDB's own. Constructs
+  whose result the language leaves undefined, such as `REGEXP_LIKE`, are refused at load, by name
+- Upstream's `examples/tpcds_semantic_model.yaml` joins the vendored conformance models, which are
+  re-vendored from one upstream commit (8dd6732) under a directory per converter
+
+### Fixed
+- **Window-function metrics are refused instead of computed.** Their rows depend on the dimensions
+  requested, which the metric cannot express: grouped by date and item category, upstream's
+  `cumulative_sales` ran across categories, and 10,047 of 10,049 rows differed from a per-category
+  running total. 0.1.1 passed such metrics through; they now fail when queried, naming the metric
+
+### Known issues
+- A DuckDB optimizer defect, present in 1.5.5 and 1.5.6 without this extension, treats
+  `INTERVAL 30 DAY` and `INTERVAL 1 MONTH` as the same expression, so a query asking for both gets
+  one answer twice. See docs/limitations.md
 
 ## [0.1.1] - 2026-09-07
 
