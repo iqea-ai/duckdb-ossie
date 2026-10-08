@@ -8,7 +8,7 @@ a model that this extension reads wrongly.
 Both submodules must be checked out before any `make` target resolves.
 
 ```sh
-git submodule update --init --recursive   # duckdb v1.5.5, extension-ci-tools v1.5.5, fkYAML
+git submodule update --init --recursive   # duckdb v1.5.6, extension-ci-tools v1.5.6, fkYAML
 make                                      # first build compiles DuckDB from source; slow, then incremental
 make test                                 # SQLLogicTests in test/sql/
 ```
@@ -27,7 +27,7 @@ around it.
 
 Submodules are pinned by recorded commit and `.gitmodules` carries no `branch` entry, so
 `git submodule update` restores exactly those commits. That matters more than it looks:
-`extension-ci-tools` publishes no tags at all, only moving version branches, so `v1.5.5` there is a
+`extension-ci-tools` publishes no tags at all, only moving version branches, so `v1.5.6` there is a
 branch whose head can change. The recorded commit is what makes a checkout reproducible.
 
 DuckDB's parser and planner internals are not a stable API; the pin is deliberate, and a version
