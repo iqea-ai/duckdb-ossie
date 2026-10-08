@@ -1,0 +1,37 @@
+#
+# Is the PUBLISHED extension usable? Installs ossie from the community registry, exactly as a user does, and
+# runs the MCP round trip against it. Separate from MainDistributionPipeline on purpose: the registry only
+# ever serves code that has already merged, so this cannot gate a pull request. It runs daily and on demand,
+# and is the check to run after a registry PR deploys.
+#
+# The CLI is deliberately unpinned. The question here is whether a user installing today's DuckDB can use
+# ossie, so on a DuckDB release day this goes red until the registry rebuilds ossie for it -- which is the
+# signal wanted.
+#
+name: Registry check
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry-mcp:
+    name: Published extension over MCP
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the latest DuckDB CLI
+        run: |
+          curl -fsSL https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Speak MCP to the server, installing ossie from the registry
+        run: python3 scripts/mcp_check.py
