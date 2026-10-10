@@ -1,9 +1,9 @@
 # Contributing
 
-Thanks for looking. Issues and pull requests are welcome — bug reports especially, and most of all
-a model that this extension reads wrongly.
+Thanks for looking. Issues and pull requests are welcome. Cases where a model is
+misinterpreted by the extension are helpful.
 
-## Getting a build
+## Build
 
 Both submodules must be checked out before any `make` target resolves.
 
@@ -13,25 +13,11 @@ make                                      # first build compiles DuckDB from sou
 make test                                 # SQLLogicTests in test/sql/
 ```
 
-There is no vcpkg step and nothing is fetched at build time. JSON parsing uses the yyjson DuckDB
-already vendors, and YAML is a single vendored header, so a bare checkout builds.
+There is no vcpkg step and nothing is fetched at build time.
+The build rules can be found in `extension-ci-tools`.
 
-Skip the submodule step and `make` fails on its first line, without saying why:
-
-```
-Makefile:8: extension-ci-tools/makefiles/duckdb_extension.Makefile: No such file or directory
-```
-
-`extension-ci-tools` supplies the actual build rules — the `Makefile` here is a two-line wrapper
-around it.
-
-Submodules are pinned by recorded commit and `.gitmodules` carries no `branch` entry, so
-`git submodule update` restores exactly those commits. That matters more than it looks:
-`extension-ci-tools` publishes no tags at all, only moving version branches, so `v1.5.6` there is a
-branch whose head can change. The recorded commit is what makes a checkout reproducible.
-
-DuckDB's parser and planner internals are not a stable API; the pin is deliberate, and a version
-bump is expected to require code changes.
+Submodules are pinned by recorded commit.
+DuckDB's parser and planner internals are not a stable API so they are pinned.
 
 A single test file goes to the unittest binary directly:
 
@@ -39,25 +25,24 @@ A single test file goes to the unittest binary directly:
 ./build/release/test/unittest test/sql/ossie_grain.test
 ```
 
-One false green to know about: a path matching no registered test prints `No tests ran` and still
-**exits 0**. Check the assertion count, not just the exit code.
+Double check the assertion count is what you expect.
 
-## The rules that outrank features
+## Rules
 
-These come first, and a change that violates one is a bug regardless of what the tests say.
+Changes should avoid violating these rules:
 
-**Never return a wrong number.** Where the model or the request underdetermines the query, refuse
-with an error naming the offending object. The primary consumer is an AI agent that cannot check
-the number it receives, so a plausible wrong answer is worse than an error. Every refusal belongs in
-[docs/limitations.md](docs/limitations.md).
+**Never return a wrong number.** If a query is ambiguous for the given model, refuse
+with an error detailing why. The primary consumer is an AI agent that cannot check
+the number it receives, so a plausible wrong answer is worse than an error. Every refusal should
+be document in [docs/limitations.md](docs/limitations.md).
 
-**Never build SQL by string concatenation.** Everything is a `ParsedExpression` tree from load to
+**Avoid building SQL by string concatenation.** Use `ParsedExpression` tree from load to
 emit; quoting and precedence come from DuckDB's printer.
 
-**Fail at load time, not query time.** Malformed expressions, query-valued `source:`, dangling
+**Where possible, fail at load time instead of query time.** Malformed expressions, query-valued `source:`, dangling
 relationship endpoints and non-`ANSI_SQL`-only expressions are all `ossie_load` errors.
 
-**Error text is part of the interface.** An agent reads a refusal and retries, so messages name the
+**Use useful error text.** An agent reads a refusal and retries, so messages name the
 offending object and tests assert on the message, not merely that something threw.
 
 ## Tests
@@ -95,11 +80,11 @@ New `.cpp` files must be added to `EXTENSION_SOURCES` in `CMakeLists.txt`.
 
 ## Pull requests
 
-`main` is protected: changes go through a pull request, and the `CI gate` check must pass. That job
-aggregates the nine-platform build, the MCP round trip, the artifact-load check and the quality
-checks, so a green `CI gate` means all of them passed.
+Submit a pull request and make sure the `CI gate` check passes. That job
+runs the nine-platform build, the MCP round trip test, the artifact-load check test and quality
+checks.
 
-Before pushing, the same gate locally:
+Before pushing, you can run the `CI gate` job locally to test:
 
 ```sh
 make && make test
@@ -108,14 +93,12 @@ PATH="$PWD/build/fmtvenv/bin:$PATH" make format-check
 python3 scripts/mcp_check.py
 ```
 
-Keep the commit message explaining *why*, not what — the diff already says what.
-
 ## Where to read more
 
 - [docs/architecture.md](docs/architecture.md) — how the compiler works and how to work on it
-- [docs/limitations.md](docs/limitations.md) — every refusal and the reasoning behind it
+- [docs/limitations.md](docs/limitations.md) — refusals and the reasoning behind them
 - [docs/UPDATING.md](docs/UPDATING.md) — moving to a new DuckDB version
 
 ## Licence
 
-Contributions are accepted under the [MIT licence](LICENSE), the same terms as the project.
+Contributions are accepted under the [MIT licence](LICENSE)
