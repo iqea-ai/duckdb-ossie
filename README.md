@@ -139,10 +139,9 @@ make test
 For the architecture and how to work on the compiler, see
 [docs/architecture.md](docs/architecture.md).
 
-Issues and pull requests are welcome — most of all a semantic model this extension reads wrongly,
+Issues and pull requests are welcome — most of all for semantic models this extension misinterpets,
 since models written by other implementers are the only ones that can catch a disagreement about
-the format. [CONTRIBUTING.md](CONTRIBUTING.md) covers the build, the invariants a change must hold
-to, when a differential test is required, and the exact `clang_format` version CI expects.
+the format. Refer to [CONTRIBUTING.md](CONTRIBUTING.md).
 
 If the extension is useful to you, a ⭐ on [the repository](https://github.com/iqea-ai/duckdb-ossie)
 helps others find it.
