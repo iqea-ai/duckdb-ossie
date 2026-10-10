@@ -1,6 +1,6 @@
 extension:
   name: ossie
-  description: The Apache Ossie (incubating) reference implementation for DuckDB. Reads Ossie
+  description: The Apache Ossie (incubating) extension for DuckDB. Reads Ossie
     semantic model files in YAML or JSON and answers semantic queries against the tables in DuckDB,
     from a single binary, with no infrastructure. Also exposes the semantic layer via MCP.
   version: 0.1.1
@@ -8,12 +8,13 @@ extension:
   build: cmake
   license: MIT
   maintainers:
+    - PradyunT
     - venkata-chikkam
     - iqea-ai
 
 repo:
   github: iqea-ai/duckdb-ossie
-  ref: ef995aa581455840c7adc4e24d30220b047962a3
+  ref: 5180c67299ca14fde9d46806c7d35f9f53c2f1a9
 
 docs:
   hello_world: |

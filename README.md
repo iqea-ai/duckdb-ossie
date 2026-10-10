@@ -4,9 +4,9 @@
 [![Community Extension](https://img.shields.io/badge/community--extensions-ossie-blue)](https://github.com/duckdb/community-extensions/blob/main/extensions/ossie/description.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-The [Apache Ossie](https://github.com/apache/ossie) (incubating) reference implementation for
-DuckDB. It reads Ossie semantic model files — YAML or JSON — and answers semantic queries against
-the tables in DuckDB, from a single binary, with no infrastructure. This extension also exposes the
+The [Apache Ossie](https://github.com/apache/ossie) (incubating) extension for DuckDB. It reads
+Ossie semantic model files — YAML or JSON — and answers semantic queries against the tables in
+DuckDB, from a single binary, with no infrastructure. This extension also exposes the
 semantic layer via MCP.
 
 **This extension works with DuckDB v1.5.6.**
@@ -118,7 +118,7 @@ refused with *Tool not found*. `scripts/mcp_check.py` asserts this on every push
 > an arbitrary SQL argument and reaches the same data. Disable all five, or point the server only at
 > a database you are willing to expose in full.
 
-## Building
+## Building & Contributing
 
 No vcpkg and no build-time dependency fetching. JSON parsing uses the yyjson DuckDB already vendors;
 YAML support is a single vendored header ([third_party/fkyaml](third_party/fkyaml), MIT).
@@ -138,6 +138,13 @@ make test
 
 For the architecture and how to work on the compiler, see
 [docs/architecture.md](docs/architecture.md).
+
+Issues and pull requests are welcome — most of all for semantic models this extension misinterpets,
+since models written by other implementers are the only ones that can catch a disagreement about
+the format. Refer to [CONTRIBUTING.md](CONTRIBUTING.md).
+
+If the extension is useful to you, a ⭐ on [the repository](https://github.com/iqea-ai/duckdb-ossie)
+helps others find it.
 
 ## License
 
