@@ -74,7 +74,7 @@ tpcds_retail_model	0.2.0.dev0	5	31	4	8
 query T
 SELECT ossie_compile(['total_sales'], ['store.s_state'], []);
 ----
-SELECT store.s_state AS "store.s_state", sum(store_sales.ss_ext_sales_price) AS total_sales FROM tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk)) GROUP BY store.s_state
+SELECT store.s_state AS "store.s_state", sum(store_sales.ss_ext_sales_price) AS total_sales FROM (tpcds.main.store_sales AS store_sales INNER JOIN tpcds.main.store AS store ON ((store_sales.ss_store_sk = store.s_store_sk))) GROUP BY store.s_state
 
 # Three of its metrics are window functions. A window's rows depend on the dimensions requested, which
 # the metric cannot know: grouped by date and category, its running total runs across categories in an

@@ -1,6 +1,7 @@
 #include "ossie/parser.hpp"
 
 #include "ossie/dialect.hpp"
+#include "ossie/names.hpp"
 
 #include "ossie/graph.hpp"
 #include "ossie/validate.hpp"
@@ -188,7 +189,7 @@ ModelExpression ParseModelExpression(yyjson_val *parent, const string &context) 
 	}
 
 	try {
-		auto parsed = Parser::ParseExpressionList(result.sql);
+		auto parsed = Parser::GetBuiltinParser().ParseExpressionList(result.sql);
 		if (parsed.size() != 1) {
 			throw InvalidInputException("ossie_load: %s expression '%s' parsed as %s expressions; "
 			                            "expected exactly one",
@@ -210,11 +211,11 @@ bool IsPlainReferenceTo(const ParsedExpression &expr, const string &field_name) 
 	if (expr.GetExpressionClass() != ExpressionClass::COLUMN_REF) {
 		return false;
 	}
-	auto &colref = expr.Cast<ColumnRefExpression>();
-	if (colref.column_names.empty()) {
+	auto names = ColumnNames(expr.Cast<ColumnRefExpression>());
+	if (names.empty()) {
 		return false;
 	}
-	return StringUtil::CIEquals(colref.column_names.back(), field_name);
+	return StringUtil::CIEquals(names.back(), field_name);
 }
 
 Field ParseField(yyjson_val *field_obj, const string &dataset_name) {
@@ -304,7 +305,7 @@ void SubstituteFieldRefs(Dataset &dataset, unique_ptr<ParsedExpression> &expr, i
                          vector<string> &stack, const string &context) {
 	if (expr->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
 		auto &colref = expr->Cast<ColumnRefExpression>();
-		auto entry = dataset.field_index.find(colref.column_names.back());
+		auto entry = dataset.field_index.find(ColumnNames(colref).back());
 		if (entry == dataset.field_index.end()) {
 			return;
 		}

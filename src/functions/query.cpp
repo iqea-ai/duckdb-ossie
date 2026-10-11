@@ -41,6 +41,7 @@ void RegisterQueryFunction(ExtensionLoader &loader) {
 	for (idx_t arity = 1; arity <= 3; arity++) {
 		TableFunction variant("ossie_query", vector<LogicalType>(arity, list), nullptr);
 		variant.bind_replace = QueryBindReplace;
+		NameParameters(variant.GetSignature(), {"metrics", "dimensions", "filters"});
 		ossie_query.AddFunction(std::move(variant));
 	}
 	CreateTableFunctionInfo info(std::move(ossie_query));

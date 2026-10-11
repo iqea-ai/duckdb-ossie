@@ -50,3 +50,19 @@ SELECT count(*) FROM duckdb_functions()
 WHERE starts_with(function_name, 'ossie_') AND NOT list_contains(categories, 'ossie');
 ----
 0
+
+# Every parameter has its real name. DuckDB 2.0 takes names from the function's signature and no longer
+# reads FunctionDescription.parameter_names, so without NameParameters these all read col0, col1, ...
+query TT
+SELECT function_name, parameters::VARCHAR FROM duckdb_functions()
+WHERE starts_with(function_name, 'ossie_') ORDER BY function_name, len(parameters);
+----
+ossie_compile	[metrics, dimensions, filters]
+ossie_datasets	[]
+ossie_fields	[]
+ossie_load	[path, rebind, validate_sources, allow_filter_functions]
+ossie_metrics	[]
+ossie_query	[metrics]
+ossie_query	[metrics, dimensions]
+ossie_query	[metrics, dimensions, filters]
+ossie_relationships	[]

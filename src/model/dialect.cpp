@@ -1,4 +1,5 @@
 #include "ossie/dialect.hpp"
+#include "ossie/names.hpp"
 
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/limits.hpp"
@@ -13,6 +14,7 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/type_expression.hpp"
+#include "duckdb/parser/literal.hpp"
 #include "duckdb/parser/parsed_expression_iterator.hpp"
 
 // The Ossie expression language (core-spec/expression_language.md) is a SQL subset. Most of it is
@@ -36,16 +38,14 @@ namespace {
 using Children = vector<unique_ptr<ParsedExpression>>;
 
 unique_ptr<ParsedExpression> Call(const string &name, Children children) {
-	return make_uniq<FunctionExpression>(name, std::move(children));
+	return make_uniq<FunctionExpression>(Identifier(name), std::move(children));
 }
 
 unique_ptr<ParsedExpression> Concatenate(unique_ptr<ParsedExpression> left, unique_ptr<ParsedExpression> right) {
 	Children children;
 	children.push_back(std::move(left));
 	children.push_back(std::move(right));
-	auto result = make_uniq<FunctionExpression>("||", std::move(children));
-	result->is_operator = true;
-	return std::move(result);
+	return make_uniq<FunctionExpression>(Identifier("||"), std::move(children), nullptr, nullptr, false, true);
 }
 
 unique_ptr<ParsedExpression> IsNull(unique_ptr<ParsedExpression> operand) {
@@ -58,17 +58,17 @@ unique_ptr<ParsedExpression> IsNull(unique_ptr<ParsedExpression> operand) {
 //! catalog but an operator.
 unique_ptr<ParsedExpression> Coalesce(unique_ptr<ParsedExpression> left, unique_ptr<ParsedExpression> right) {
 	auto result = make_uniq<OperatorExpression>(ExpressionType::OPERATOR_COALESCE);
-	result->children.push_back(std::move(left));
-	result->children.push_back(std::move(right));
+	result->GetChildrenMutable().push_back(std::move(left));
+	result->GetChildrenMutable().push_back(std::move(right));
 	return std::move(result);
 }
 
 unique_ptr<ParsedExpression> Null() {
-	return make_uniq<ConstantExpression>(Value());
+	return ConstantExpression::Null();
 }
 
 unique_ptr<ParsedExpression> Integer(int32_t value) {
-	return make_uniq<ConstantExpression>(Value::INTEGER(value));
+	return ConstantExpression::Integer(value);
 }
 
 //! CASE WHEN `condition` THEN `then_expr` ELSE `else_expr` END
@@ -78,8 +78,8 @@ unique_ptr<ParsedExpression> Case(unique_ptr<ParsedExpression> condition, unique
 	CaseCheck check;
 	check.when_expr = std::move(condition);
 	check.then_expr = std::move(then_expr);
-	result->case_checks.push_back(std::move(check));
-	result->else_expr = std::move(else_expr);
+	result->CaseChecksMutable().push_back(std::move(check));
+	result->ElseMutable() = std::move(else_expr);
 	return std::move(result);
 }
 
@@ -95,12 +95,12 @@ unique_ptr<ParsedExpression> NullIfAnyNull(const Children &arguments, unique_ptr
 	return Case(std::move(any_null), Null(), std::move(expr));
 }
 
-void RequireArgumentCount(const FunctionExpression &function, idx_t minimum, idx_t maximum, const string &spelling,
-                          const string &context) {
-	auto count = function.children.size();
+void RequireArgumentCount(const Children &args, const string &name, idx_t minimum, idx_t maximum,
+                          const string &spelling, const string &context) {
+	auto count = args.size();
 	if (count < minimum || count > maximum) {
 		throw InvalidInputException("%s calls %s with %s argument(s); OSSIE_SQL_2026 defines it as %s", context,
-		                            StringUtil::Upper(function.function_name), to_string(count), spelling);
+		                            StringUtil::Upper(name), to_string(count), spelling);
 	}
 }
 
@@ -109,14 +109,14 @@ void RequireArgumentCount(const FunctionExpression &function, idx_t minimum, idx
 string DatePart(const ParsedExpression &argument, const string &function_name, const string &context) {
 	string part;
 	if (argument.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
-		auto &column = argument.Cast<ColumnRefExpression>();
-		if (column.column_names.size() == 1) {
-			part = column.column_names[0];
+		auto names = ColumnNames(argument.Cast<ColumnRefExpression>());
+		if (names.size() == 1) {
+			part = names[0];
 		}
 	} else if (argument.GetExpressionClass() == ExpressionClass::CONSTANT) {
-		auto &constant = argument.Cast<ConstantExpression>();
-		if (!constant.value.IsNull() && constant.value.type().InternalType() == PhysicalType::VARCHAR) {
-			part = constant.value.ToString();
+		auto &literal = argument.Cast<ConstantExpression>().GetLiteral();
+		if (literal.kind == LiteralKind::STRING) {
+			part = literal.text;
 		}
 	}
 	part = StringUtil::Lower(part);
@@ -133,47 +133,69 @@ string DatePart(const ParsedExpression &argument, const string &function_name, c
 
 //! Returns the replacement for `function`, or nullptr to keep it as it is.
 unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const string &context) {
-	if (function.is_operator || !function.schema.empty() || !function.catalog.empty()) {
+	auto &qualified = function.GetQualifiedName();
+	if (function.IsOperator() || !qualified.Schema().empty() || !qualified.Catalog().empty()) {
 		return nullptr;
 	}
-	auto name = StringUtil::Lower(function.function_name);
-	auto &args = function.children;
+	auto name = StringUtil::Lower(function.FunctionName().GetIdentifierName());
+	static const char *const LOWERED[] = {"nvl",       "iff",        "nvl2",       "zeroifnull", "nullifzero",
+	                                      "charindex", "startswith", "endswith",   "to_date",    "to_timestamp",
+	                                      "dateadd",   "datediff",   "date_trunc", "concat",     "greatest",
+	                                      "least",     "regexp_like"};
+	bool lowered = false;
+	for (auto candidate : LOWERED) {
+		lowered = lowered || name == candidate;
+	}
+	if (!lowered) {
+		return nullptr;
+	}
+	// Only now take the arguments out: a call left as it is must keep them. A named argument (name := value)
+	// is not part of the language, so such a call is left for DuckDB's binder to judge.
+	Children args;
+	for (auto &argument : function.GetArgumentsMutable()) {
+		if (argument.HasName()) {
+			return nullptr;
+		}
+	}
+	for (auto &argument : function.GetArgumentsMutable()) {
+		args.push_back(std::move(argument.GetExpressionMutable()));
+	}
 
 	if (name == "nvl") {
-		RequireArgumentCount(function, 2, 2, "NVL(expr, default)", context);
+		RequireArgumentCount(args, name, 2, 2, "NVL(expr, default)", context);
 		return Coalesce(std::move(args[0]), std::move(args[1]));
 	}
 	if (name == "iff") {
 		// DuckDB's parser turns IF into this CASE itself; IFF is the same function under another name.
-		RequireArgumentCount(function, 3, 3, "IFF(condition, true_result, false_result)", context);
+		RequireArgumentCount(args, name, 3, 3, "IFF(condition, true_result, false_result)", context);
 		return Case(std::move(args[0]), std::move(args[1]), std::move(args[2]));
 	}
 	if (name == "nvl2") {
-		RequireArgumentCount(function, 3, 3, "NVL2(expr, not_null_result, null_result)", context);
+		RequireArgumentCount(args, name, 3, 3, "NVL2(expr, not_null_result, null_result)", context);
 		return Case(IsNull(std::move(args[0])), std::move(args[2]), std::move(args[1]));
 	}
 	if (name == "zeroifnull") {
-		RequireArgumentCount(function, 1, 1, "ZEROIFNULL(expr)", context);
+		RequireArgumentCount(args, name, 1, 1, "ZEROIFNULL(expr)", context);
 		return Coalesce(std::move(args[0]), Integer(0));
 	}
 	if (name == "nullifzero") {
-		RequireArgumentCount(function, 1, 1, "NULLIFZERO(expr)", context);
+		RequireArgumentCount(args, name, 1, 1, "NULLIFZERO(expr)", context);
 		args.push_back(Integer(0));
 		return Call("nullif", std::move(args));
 	}
 	if (name == "charindex") {
-		RequireArgumentCount(function, 2, 2, "CHARINDEX(substr, str)", context);
+		RequireArgumentCount(args, name, 2, 2, "CHARINDEX(substr, str)", context);
 		Children swapped;
 		swapped.push_back(std::move(args[1]));
 		swapped.push_back(std::move(args[0]));
 		return Call("strpos", std::move(swapped));
 	}
 	if (name == "startswith") {
-		RequireArgumentCount(function, 2, 2, "STARTSWITH(str, prefix)", context);
+		RequireArgumentCount(args, name, 2, 2, "STARTSWITH(str, prefix)", context);
 		return Call("starts_with", std::move(args));
 	}
 	if (name == "endswith") {
-		RequireArgumentCount(function, 2, 2, "ENDSWITH(str, suffix)", context);
+		RequireArgumentCount(args, name, 2, 2, "ENDSWITH(str, suffix)", context);
 		return Call("suffix", std::move(args));
 	}
 	if (name == "to_date" || name == "to_timestamp") {
@@ -188,7 +210,7 @@ unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const s
 		return make_uniq<CastExpression>(is_date ? LogicalType::DATE : LogicalType::TIMESTAMP, std::move(args[0]));
 	}
 	if (name == "dateadd") {
-		RequireArgumentCount(function, 3, 3, "DATEADD(part, amount, date_expr)", context);
+		RequireArgumentCount(args, name, 3, 3, "DATEADD(part, amount, date_expr)", context);
 		auto part = DatePart(*args[0], name, context);
 		Children interval;
 		interval.push_back(std::move(args[1]));
@@ -199,14 +221,14 @@ unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const s
 	}
 	if (name == "datediff" || name == "date_trunc") {
 		auto is_diff = name == "datediff";
-		RequireArgumentCount(function, is_diff ? 3 : 2, is_diff ? 3 : 2,
+		RequireArgumentCount(args, name, is_diff ? 3 : 2, is_diff ? 3 : 2,
 		                     is_diff ? "DATEDIFF(part, start_date, end_date)" : "DATE_TRUNC(part, date_expr)", context);
-		args[0] = make_uniq<ConstantExpression>(Value(DatePart(*args[0], name, context)));
+		args[0] = ConstantExpression::String(DatePart(*args[0], name, context));
 		return Call(name, std::move(args));
 	}
 	if (name == "concat") {
 		if (args.empty()) {
-			RequireArgumentCount(function, 1, NumericLimits<idx_t>::Maximum(), "CONCAT(str1, str2, ...)", context);
+			RequireArgumentCount(args, name, 1, NumericLimits<idx_t>::Maximum(), "CONCAT(str1, str2, ...)", context);
 		}
 		auto result = std::move(args[0]);
 		for (idx_t i = 1; i < args.size(); i++) {
@@ -215,12 +237,11 @@ unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const s
 		return result;
 	}
 	if (name == "greatest" || name == "least") {
-		auto native = Call(name, Children());
-		auto &native_args = native->Cast<FunctionExpression>().children;
+		Children copies;
 		for (auto &argument : args) {
-			native_args.push_back(argument->Copy());
+			copies.push_back(argument->Copy());
 		}
-		return NullIfAnyNull(args, std::move(native));
+		return NullIfAnyNull(args, Call(name, std::move(copies)));
 	}
 	if (name == "regexp_like") {
 		throw InvalidInputException(
@@ -234,15 +255,12 @@ unique_ptr<ParsedExpression> LowerFunction(FunctionExpression &function, const s
 
 //! TIMESTAMP_NTZ is the language's wall-clock timestamp; DuckDB calls it TIMESTAMP.
 void LowerCast(CastExpression &cast) {
-	if (cast.cast_type.id() != LogicalTypeId::UNBOUND) {
+	auto &target = cast.TargetType();
+	if (!target.GetSchema().empty() || !target.GetCatalog().empty()) {
 		return;
 	}
-	auto &type_expr = UnboundType::GetTypeExpression(cast.cast_type);
-	if (!type_expr || type_expr->GetExpressionClass() != ExpressionClass::TYPE) {
-		return;
-	}
-	if (StringUtil::CIEquals(type_expr->Cast<TypeExpression>().GetTypeName(), "timestamp_ntz")) {
-		cast.cast_type = LogicalType::TIMESTAMP;
+	if (StringUtil::CIEquals(target.GetTypeName().GetIdentifierName(), "timestamp_ntz")) {
+		cast.SetTargetType(TypeExpression::FromLogicalType(LogicalType::TIMESTAMP));
 	}
 }
 

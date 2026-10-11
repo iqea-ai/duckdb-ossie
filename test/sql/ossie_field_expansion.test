@@ -17,19 +17,19 @@ CALL ossie_load('test/fixtures/nested_field_model.json', rebind => MAP{'tpcds.pu
 query T
 SELECT ossie_compile(['total'], ['dim.mid'], []);
 ----
-SELECT (dim."label" || 'M') AS "dim.mid", sum(sales.amt) AS total FROM memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k)) GROUP BY (dim."label" || 'M')
+SELECT (dim."label" || 'M') AS "dim.mid", sum(sales.amt) AS total FROM (memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k))) GROUP BY (dim."label" || 'M')
 
 # Two levels: outer_f -> mid -> label. The emitted SQL must contain no reference to "mid".
 query T
 SELECT ossie_compile(['total'], ['dim.outer_f'], []);
 ----
-SELECT ((dim."label" || 'M') || 'O') AS "dim.outer_f", sum(sales.amt) AS total FROM memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k)) GROUP BY ((dim."label" || 'M') || 'O')
+SELECT ((dim."label" || 'M') || 'O') AS "dim.outer_f", sum(sales.amt) AS total FROM (memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k))) GROUP BY ((dim."label" || 'M') || 'O')
 
 # Three levels, to show the recursion is not depth-limited.
 query T
 SELECT ossie_compile(['total'], ['dim.deep'], []);
 ----
-SELECT (((dim."label" || 'M') || 'O') || 'D') AS "dim.deep", sum(sales.amt) AS total FROM memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k)) GROUP BY (((dim."label" || 'M') || 'O') || 'D')
+SELECT (((dim."label" || 'M') || 'O') || 'D') AS "dim.deep", sum(sales.amt) AS total FROM (memory.main.sales AS sales INNER JOIN memory.main.dim AS dim ON ((sales.k = dim.k))) GROUP BY (((dim."label" || 'M') || 'O') || 'D')
 
 # The regression itself: a physical column named after a model field must not shadow it.
 statement ok

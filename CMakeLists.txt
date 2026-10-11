@@ -3,18 +3,22 @@ cmake_minimum_required(VERSION 3.5)
 # Set extension name here
 set(TARGET_NAME ossie)
 
-# DuckDB's extension distribution supports vcpkg: add dependencies to ./vcpkg.json and pull them in here with
-# find_package. duckdb_ossie deliberately uses none. JSON parsing uses the yyjson DuckDB already vendors, and
-# YAML support comes from fkYAML, pinned as a submodule (third_party/fkYAML) exactly the way duckdb and
-# extension-ci-tools are. Keeping vcpkg off the critical path matters here: the code-quality workflow does not
-# set up vcpkg at all, so a find_package dependency breaks the tidy job.
+# DuckDB's extension distribution supports vcpkg: add dependencies to
+# ./vcpkg.json and pull them in here with find_package. duckdb_ossie
+# deliberately uses none. JSON parsing uses the yyjson DuckDB already vendors,
+# and YAML support comes from fkYAML, pinned as a submodule (third_party/fkYAML)
+# exactly the way duckdb and extension-ci-tools are. Keeping vcpkg off the
+# critical path matters here: the code-quality workflow does not set up vcpkg at
+# all, so a find_package dependency breaks the tidy job.
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
 
-set(CMAKE_CXX_STANDARD "17" CACHE STRING "C++ standard to enforce")
+set(CMAKE_CXX_STANDARD
+    "17"
+    CACHE STRING "C++ standard to enforce")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(src/include)

@@ -17,16 +17,16 @@ void SplitSource(const string &source, string &catalog, string &schema, string &
 	auto parts = QualifiedName::ParseComponents(source);
 	switch (parts.size()) {
 	case 3:
-		catalog = parts[0];
-		schema = parts[1];
-		name = parts[2];
+		catalog = parts[0].GetIdentifierName();
+		schema = parts[1].GetIdentifierName();
+		name = parts[2].GetIdentifierName();
 		break;
 	case 2:
-		schema = parts[0];
-		name = parts[1];
+		schema = parts[0].GetIdentifierName();
+		name = parts[1].GetIdentifierName();
 		break;
 	case 1:
-		name = parts[0];
+		name = parts[0].GetIdentifierName();
 		break;
 	default:
 		break;
@@ -41,9 +41,10 @@ bool SourceResolves(ClientContext &context, const string &source) {
 	}
 
 	// Looking up TABLE_ENTRY also finds views, which the spec allows as a source.
-	EntryLookupInfo lookup_info(CatalogType::TABLE_ENTRY, name);
+	EntryLookupInfo lookup_info(CatalogType::TABLE_ENTRY,
+	                            QualifiedName(Identifier(catalog), Identifier(schema), Identifier(name)));
 	try {
-		return Catalog::GetEntry(context, catalog, schema, lookup_info, OnEntryNotFound::RETURN_NULL) != nullptr;
+		return Catalog::GetEntry(context, lookup_info, OnEntryNotFound::RETURN_NULL) != nullptr;
 	} catch (const std::exception &) {
 		// An unattached database throws rather than returning null.
 		return false;

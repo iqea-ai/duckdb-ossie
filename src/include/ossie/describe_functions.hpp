@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/function/function.hpp"
 #include "duckdb/parser/parsed_data/create_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
@@ -25,6 +26,15 @@ inline FunctionDescription Describe(vector<string> parameter_names, string descr
 	result.examples = std::move(examples);
 	result.categories = {"ossie", "semantic layer"};
 	return result;
+}
+
+//! Names a function's positional parameters. DuckDB 2.0's duckdb_functions() takes parameter names from the
+//! signature alone and no longer reads FunctionDescription.parameter_names, so a function built from a bare
+//! type list publishes col0, col1, ... The parameters' kinds are untouched: they stay positional-only.
+inline void NameParameters(FunctionSignature &signature, const vector<string> &names) {
+	for (idx_t i = 0; i < names.size() && i < signature.GetParameterCount(); i++) {
+		signature.GetParameter(i).SetName(Identifier(names[i]));
+	}
 }
 
 } // namespace ossie

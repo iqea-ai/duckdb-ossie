@@ -1,5 +1,7 @@
 #include "ossie/validate.hpp"
 
+#include "ossie/names.hpp"
+
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
@@ -19,7 +21,7 @@ void VisitColumnRefs(const ParsedExpression &expr, const std::function<void(cons
 }
 
 string Render(const ColumnRefExpression &colref) {
-	return StringUtil::Join(colref.column_names, ".");
+	return StringUtil::Join(colref.ColumnNames(), ".");
 }
 
 // Deliberately no RequireField() any more. The Ossie schema requires neither that a relationship's
@@ -47,7 +49,7 @@ void ValidateKeys(const Dataset &dataset) {
 void ValidateFieldExpression(const Dataset &dataset, const Field &field) {
 	auto context = StringUtil::Format("field \"%s.%s\"", dataset.name, field.name);
 	VisitColumnRefs(*field.expression.tree, [&](const ColumnRefExpression &colref) {
-		auto &names = colref.column_names;
+		auto names = ColumnNames(colref);
 		if (names.size() > 2 || (names.size() == 2 && !StringUtil::CIEquals(names[0], dataset.name))) {
 			throw InvalidInputException("ossie_load: %s references \"%s\", but a field expression may only "
 			                            "reference its own dataset \"%s\" -- crossing datasets would require a join",
@@ -59,7 +61,7 @@ void ValidateFieldExpression(const Dataset &dataset, const Field &field) {
 void ValidateMetricExpression(const Model &model, const Metric &metric) {
 	auto context = StringUtil::Format("metric \"%s\"", metric.name);
 	VisitColumnRefs(*metric.expression.tree, [&](const ColumnRefExpression &colref) {
-		auto &names = colref.column_names;
+		auto names = ColumnNames(colref);
 		if (names.size() != 2) {
 			throw InvalidInputException("ossie_load: %s references \"%s\"; a metric must qualify every column "
 			                            "as dataset.field so its grain is unambiguous",

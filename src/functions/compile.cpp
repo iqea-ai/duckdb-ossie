@@ -51,7 +51,11 @@ void RegisterCompileFunction(ExtensionLoader &loader) {
 	auto string_list = LogicalType::LIST(LogicalType::VARCHAR);
 	ScalarFunction ossie_compile("ossie_compile", {string_list, string_list, string_list}, LogicalType::VARCHAR,
 	                             CompileFunction);
+	NameParameters(ossie_compile.GetSignature(), {"metrics", "dimensions", "filters"});
 
+	// Every refusal is thrown from here, and its text is part of the interface. A function that throws must say
+	// so, or DuckDB reports the error as an INTERNAL one and the message an agent retries on is lost.
+	ossie_compile.SetFallible();
 	CreateScalarFunctionInfo info(ossie_compile);
 	info.descriptions.push_back(
 	    Describe({"metrics", "dimensions", "filters"},
