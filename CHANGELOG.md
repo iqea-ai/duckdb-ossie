@@ -11,6 +11,10 @@ pins). The DuckDB version each release targets is noted separately.
 
 ## [Unreleased]
 
+### Changed
+- CI's `mcp-round-trip` job runs again and `CI gate` requires it. The community registry now serves
+  duckdb_mcp for DuckDB v2.0.0 (teaguesterling/duckdb_mcp#103, closed 2026-10-28).
+
 ## [0.3.0] - 2026-10-21
 
 Targets DuckDB **v2.0.0**. DuckDB v1.5.6 keeps the 0.2.0 build.
