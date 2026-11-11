@@ -32,13 +32,10 @@ jobs:
   # DuckDB publishing the very version under review: the registry never has the code a PR introduces.
   # The registry path is still tested, after publishing, by RegistryCheck.yml.
   #
-  # OFF (2026-10-21): duckdb_mcp has no DuckDB 2.0 build in the registry yet (v2.0.0 returns 404; its remap
-  # is duckdb/community-extensions#3111). This job installs it from there, so it cannot pass. Remove the
-  # `if` and add the job back to ci-gate once duckdb_mcp serves v2.0.0. This stays true after the 2.0.0 tag.
+  # Back on 2026-11-02: duckdb_mcp serves DuckDB 2.0.0 from the registry (teaguesterling/duckdb_mcp#103).
   mcp-round-trip:
     name: MCP round trip
     needs: duckdb-stable-build
-    if: false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -150,16 +147,17 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    # mcp-round-trip is off until duckdb_mcp serves DuckDB 2.0 (see that job); restore it here with it.
-    needs: [duckdb-stable-build, artifact-load, code-quality-check]
+    needs: [duckdb-stable-build, mcp-round-trip, artifact-load, code-quality-check]
     runs-on: ubuntu-latest
     steps:
       - name: Require every gating job to have succeeded
         run: |
           echo "build    = ${{ needs.duckdb-stable-build.result }}"
+          echo "mcp      = ${{ needs.mcp-round-trip.result }}"
           echo "artifact = ${{ needs.artifact-load.result }}"
           echo "quality  = ${{ needs.code-quality-check.result }}"
           [ "${{ needs.duckdb-stable-build.result }}" = success ] \
+          && [ "${{ needs.mcp-round-trip.result }}" = success ] \
           && [ "${{ needs.artifact-load.result }}" = success ] \
           && [ "${{ needs.code-quality-check.result }}" = success ]
 
